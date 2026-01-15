@@ -54,14 +54,14 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO DEFINITIVA (FOCO EM EXCEL BRASIL) ---
+        # --- EXPORTAÇÃO BLINDADA (SEM DATAS E COM ACENTOS) ---
         df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
             with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
                 st.markdown(f"### 📋 Resumo: {t_sel}")
                 
-                # Tabela visual bonitinha na tela do app
+                # Tabela visual no Streamlit (Fica bonita e com acentos)
                 tabela_html = "| Exercício | Séries | Reps | Descanso |\n| :--- | :--- | :--- | :--- |\n"
                 for _, r in df_ex.iterrows():
                     tabela_html += f"| **{r['nome']}** | {r['series']} | {r['repeticoes']} | {r['tempo_descanso']}s |\n"
@@ -69,22 +69,25 @@ if menu == "🏋️ Treinar Agora":
                 
                 st.divider()
 
-                # 1. Preparamos os dados exatamente como você pediu
+                # 1. Preparando os dados
                 df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
+                
+                # TRUQUE DO APÓSTROFO: Impede o Excel de converter pirâmide (10-8-6) em Data
+                df_export['repeticoes'] = df_export['repeticoes'].apply(lambda x: f"'{x}")
+                
                 df_export.columns = ['Exercicio', 'Series', 'Reps', 'Descanso']
 
-                # 2. A SOLUÇÃO PARA O EXCEL BRASILEIRO:
-                # Usamos 'latin-1' (ou cp1252) para os acentos e ';' para as colunas
-                csv_excel = df_export.to_csv(index=False, sep=';', encoding='latin-1')
+                # 2. FORMATO EXCEL COMPATÍVEL (CSV + UTF-8-SIG + PONTO E VÍRGULA)
+                # O 'utf-8-sig' com ';' é o que o Excel brasileiro entende melhor para acentos
+                csv_excel = df_export.to_csv(index=False, sep=';', encoding='utf-8-sig')
 
                 st.download_button(
-                    label="📥 BAIXAR PARA EXCEL (Formato Corrigido)",
+                    label="📥 BAIXAR PARA EXCEL (Sem erro de Data)",
                     data=csv_excel,
                     file_name=f'Treino_{t_sel}.csv',
                     mime='text/csv',
                     use_container_width=True
                 )
-                st.info("💡 Este arquivo abre direto no Excel com colunas e acentos protegidos.")
 
         st.divider()
 
