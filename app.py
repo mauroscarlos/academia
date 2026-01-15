@@ -17,8 +17,6 @@ def get_engine():
     
     return create_engine(conn_url, pool_pre_ping=True)
 
-engine = get_engine()
-
 # --- ESTILIZAÇÃO CSS ---
 st.markdown("""
     <style>
