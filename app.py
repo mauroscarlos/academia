@@ -140,7 +140,7 @@ elif menu == "📝 Montar Treino":
     with st.container(border=True):
         st.subheader("Configurar Exercício(s)")
         
-        # Seleção de Exercícios (Linhas superiores)
+        # Seleção de Exercícios
         ex1 = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex1_{st.session_state.form_token}")
         ex2_check = st.selectbox("2. Combinar com outro (Bi-set)?", ["Não", "Sim"], key=f"ex2_check_{st.session_state.form_token}")
         
@@ -149,36 +149,38 @@ elif menu == "📝 Montar Treino":
         
         st.divider()
 
-        # --- TUDO EM UMA LINHA SÓ ---
-        tipo_meta_v = st.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-        label_dinamico = "Tempo" if tipo_meta_v == "Tempo (s)" else "Reps"
-        
-        # Definimos as larguras das colunas para caber tudo lado a lado
+        # --- A LINHA ÚNICA DEFINITIVA ---
+        # Proporções: Tipo(2), Séries(1), Reps(2), Descanso(1), Carga(1)
         if tipo_meta_v != "Pirâmide":
             if ex2_check == "Sim":
-                # Layout Bi-set: Séries, R1, R2, Desc, Carga
-                c_ser, c_r1, c_r2, c_desc, c_cg = st.columns([1, 1.5, 1.5, 1, 1])
-                series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-                final_reps1 = c_r1.text_input(f"{label_dinamico} 1", "12", key=f"r1_{st.session_state.form_token}")
-                final_reps2 = c_r2.text_input(f"{label_dinamico} 2", "10", key=f"r2_{st.session_state.form_token}")
-                descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-                carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+                # Layout Bi-set em linha única
+                c_tp, c_sr, c_r1, c_r2, c_ds, c_cg = st.columns([2, 1, 1.2, 1.2, 1, 1])
+                tipo_meta_v = c_tp.selectbox("Tipo", ["Reps", "Tempo", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+                series = c_sr.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+                label_din = "Tempo" if tipo_meta_v == "Tempo" else "Reps"
+                final_reps1 = c_r1.text_input(f"{label_din} 1", "12", key=f"r1_{st.session_state.form_token}")
+                final_reps2 = c_r2.text_input(f"{label_din} 2", "10", key=f"r2_{st.session_state.form_token}")
+                descanso = c_ds.number_input("Desc.", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+                carga = c_cg.text_input("Kg", "10", key=f"cg_{st.session_state.form_token}")
             else:
-                # Layout Simples: Séries, Reps, Desc, Carga (Exatamente como o print image_cad56b)
-                c_ser, c_rep, c_desc, c_cg = st.columns([1, 2, 1, 1])
-                series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-                final_reps1 = c_rep.text_input(label_dinamico, "12", key=f"r1_{st.session_state.form_token}")
+                # Layout Simples em linha única (Tipo, Séries, Reps, Descanso, Carga)
+                c_tp, c_sr, c_rp, c_ds, c_cg = st.columns([2, 1, 2, 1, 1])
+                tipo_meta_v = c_tp.selectbox("Tipo", ["Reps", "Tempo", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+                series = c_sr.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+                label_din = "Tempo" if tipo_meta_v == "Tempo" else "Reps"
+                final_reps1 = c_rp.text_input(label_din, "12", key=f"r1_{st.session_state.form_token}")
                 final_reps2 = "12"
-                descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-                carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+                descanso = c_ds.number_input("Desc.", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+                carga = c_cg.text_input("Kg", "10", key=f"cg_{st.session_state.form_token}")
         else:
-            # Para Pirâmide, mantemos os controles em linha e as caixas logo abaixo
-            c_ser, c_desc, c_cg = st.columns([1, 1, 1])
-            series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-            carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+            # Para Pirâmide, mantemos os controles em linha e abrimos os campos abaixo
+            c_tp, c_sr, c_ds, c_cg = st.columns([2, 1, 1, 1])
+            tipo_meta_v = c_tp.selectbox("Tipo", ["Reps", "Tempo", "Pirâmide"], key=f"tp_{st.session_state.form_token}", index=2)
+            series = c_sr.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+            descanso = c_ds.number_input("Desc.", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+            carga = c_cg.text_input("Kg", "10", key=f"cg_{st.session_state.form_token}")
             
-            st.caption(f"🔢 Repetições da Pirâmide ({series} séries):")
+            st.write(f"🔢 Reps da Pirâmide ({series} séries):")
             cols_p = st.columns(series)
             reps_list = []
             for i in range(series):
