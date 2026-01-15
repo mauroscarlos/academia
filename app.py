@@ -54,7 +54,7 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO (Alinhado com o t_sel acima) ---
+        # --- EXPORTAÇÃO CORRIGIDA (SEM BIBLIOTECAS EXTRAS) ---
         df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
@@ -69,26 +69,22 @@ if menu == "🏋️ Treinar Agora":
                 
                 st.divider()
 
-                # 1. Preparamos os dados apenas com o que você quer
-                # Renomeando as colunas para a exportação
+                # 1. Preparamos os dados exatamente como você pediu
                 df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
                 df_export.columns = ['Exercício', 'Séries', 'Reps', 'Descanso']
 
-                # 2. MÁGICA PARA OS ACENTOS: Exportar como EXCEL (.xlsx)
-                import io
-                output = io.BytesIO()
-                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df_export.to_excel(writer, index=False, sheet_name='Treino')
-                
-                excel_data = output.getvalue()
+                # 2. TRUQUE PARA O EXCEL: UTF-16 + SEPARADOR TAB OU PONTO-E-VÍRGULA
+                # O 'utf-16' é o formato que o Excel mais gosta para arquivos de texto com acento
+                csv_data = df_export.to_csv(index=False, sep='\t', encoding='utf-16')
 
                 st.download_button(
-                    label="📥 BAIXAR FICHA PARA EXCEL (Sem erro de acento)",
-                    data=excel_data,
-                    file_name=f'Treino_{t_sel}.xlsx',
-                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    label="📥 BAIXAR FICHA PARA EXCEL (Acentos Corrigidos)",
+                    data=csv_data,
+                    file_name=f'Treino_{t_sel}.csv',
+                    mime='text/csv',
                     use_container_width=True
                 )
+                st.caption("✅ As colunas de 'Reps' (ex: 12-10-8) não serão mais convertidas em datas.")
 
         st.divider()
 
