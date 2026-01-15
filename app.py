@@ -87,7 +87,7 @@ if menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t_cnt}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO (COM FOCO EM REPS DIFERENTES) ---
+# --- 3. MONTAR TREINO (REVISADO E SEM ERROS) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever Treino")
     st.cache_data.clear()
@@ -112,11 +112,12 @@ elif menu == "📝 Montar Treino":
             ex2 = st.selectbox("Selecione o segundo exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
         
         st.divider()
-        c1, c2 = st.columns(2)
-        series = c1.number_input("Número de Séries (Igual para ambos)", 1, 10, 3, key=f"ser_{st.session_state.form_token}")
-        carga = c2.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
+        c1, c2, c3 = st.columns(3)
+        # VARIAVEL 'tipo_meta_v' PADRONIZADA AQUI
+        tipo_meta_v = c1.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+        series = c2.number_input("Séries", 1, 10, 3, key=f"ser_{st.session_state.form_token}")
+        carga = c3.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
         
-        # AQUI ESTÁ O QUE VOCÊ PRECISAVA: Repetições dinâmicas
         r1_col, r2_col = st.columns(2)
         reps1 = r1_col.text_input(f"Reps para: {ex1}", "12", key=f"r1_{st.session_state.form_token}")
         
@@ -128,50 +129,33 @@ elif menu == "📝 Montar Treino":
         
         if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
             id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
-            
-            # Garantimos que o 'cb' seja o NOME do exercício ou None
             exercicio_biset = ex2 if ex2_check == "Sim" else None
             
             with engine.begin() as conn:
-                # 1. Salva o Primeiro Exercício
+                # Salva o Primeiro
                 conn.execute(text("""
-                    INSERT INTO fichas_treino 
-                    (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
+                    INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                 """), {
                     "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, 
-                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, 
-                    "tm": tipo, "cb": exercicio_biset
+                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": exercicio_biset
                 })
                 
-                # 2. Se for Bi-set, salva o Segundo imediatamente
+                # Se for Bi-set, salva o Segundo
                 if ex2_check == "Sim":
                     id_ex2 = int(bib[bib['nome'] == ex2]['id'].values[0])
                     conn.execute(text("""
-                        INSERT INTO fichas_treino 
-                        (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
+                        INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                         VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                     """), {
                         "u": id_al, "t": tr_sel, "e": id_ex2, "s": series, "r": reps2, 
-                        "cg": carga, "td": descanso, "tm": tipo, "cb": None
+                        "cg": carga, "td": descanso, "tm": tipo_meta_v, "cb": None
                     })
             
             st.session_state.form_token += 1
-            st.success("Exercícios salvos com sucesso!")
+            st.success("Salvo com sucesso!")
             time.sleep(1)
             st.rerun()
-    st.divider()
-    df_ficha = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
-    if not df_ficha.empty:
-        st.subheader(f"📋 Ficha Atual: {tr_sel}")
-        for _, r in df_ficha.iterrows():
-            c1, c2 = st.columns([4, 1])
-            txt = f"🔹 **{r['nome']}** - {r['repeticoes']} reps"
-            if r['exercicio_combinado_id']: txt += f" (Bi-set com {r['exercicio_combinado_id']})"
-            c1.write(txt)
-            if c2.button("🗑️", key=f"del_{r['id']}"):
-                with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
-                st.rerun()
 
 # --- 4. BIBLIOTECA / 5. GESTÃO (Estrutura básica para manter o app rodando) ---
 elif menu == "⚙️ Biblioteca":
