@@ -54,12 +54,17 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO "PEGA E LEVA" (ÁREA DE TRANSFERÊNCIA) ---
-        df_ex = pd.read_sql(text("SELECT f.*, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
+        # --- EXPORTAÇÃO (CONSULTA COMPLETA PARA NÃO DAR ERRO) ---
+        df_ex = pd.read_sql(text("""
+            SELECT f.*, e.nome, e.url_imagem 
+            FROM fichas_treino f 
+            JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+            WHERE f.usuario_id = :u AND f.treino_nome = :t 
+            ORDER BY f.id ASC
+        """), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
-            with st.expander("📲 COPIAR TREINO PARA WHATSAPP / NOTAS"):
-                # Montando o texto com hifens e organização visual
+            with st.expander("📲 Exportar treino para área de transferência"):
                 texto_para_copiar = f"🏋️ TREINO: {t_sel}\n"
                 texto_para_copiar += "---------------------------------\n"
                 
@@ -71,12 +76,8 @@ if menu == "🏋️ Treinar Agora":
                 texto_para_copiar += "---------------------------------\n"
                 texto_para_copiar += "💪 Foco no treino! Gerado por SGF Elite."
 
-                st.markdown("Clique no botão à direita do quadro abaixo para copiar:")
-                
-                # O st.code já vem com botão de cópia automático no Streamlit
+                st.info("Clique no ícone de copiar (canto superior direito do quadro abaixo) e cole no seu WhatsApp ou Notas.")
                 st.code(texto_para_copiar, language=None)
-                
-                st.caption("✅ Depois de copiar, basta 'Colar' na conversa do seu WhatsApp.")
 
         st.divider()
 
@@ -98,7 +99,7 @@ if menu == "🏋️ Treinar Agora":
                 st.session_state.inicio_t = datetime.now()
                 st.rerun()
 
-        # Continuação do código de exibição dos exercícios...
+        # Renderização dos Cards com as Imagens (O campo url_imagem agora está no SQL)
         nomes_no_par = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
 
         for _, row in df_ex.iterrows():
