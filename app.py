@@ -165,11 +165,11 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO (VERSÃO CORRIGIDA E FINAL) ---
+# --- 3. MONTAR TREINO (VERSÃO FINAL SEM ERROS DE NOME) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever e Editar Treino")
     
-    # 1. Carregamento de dados base
+    # 1. Carregamento de dados base e limpeza de cache
     st.cache_data.clear()
     alunos_df = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     biblioteca_df = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
@@ -179,10 +179,10 @@ elif menu == "📝 Montar Treino":
     aluno_escolhido = col_al.selectbox("Selecione o Aluno:", alunos_df['nome'].tolist())
     id_aluno_atual = int(alunos_df[alunos_df['nome'] == aluno_escolhido]['id'].values[0])
     
-    # DEFINIÇÃO ÚNICA DA VARIÁVEL: Usaremos 'treino_atual' para evitar o NameError
-    treino_atual = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
+    # PADRONIZAÇÃO: Usaremos 'treino_selecionado' em todo o bloco
+    treino_selecionado = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
 
-    # 2. Busca exercícios salvos para este contexto
+    # 2. Busca exercícios salvos no banco para este aluno e treino
     with engine.connect() as conn:
         query_check = text("""
             SELECT f.id, e.nome 
@@ -191,13 +191,13 @@ elif menu == "📝 Montar Treino":
             WHERE f.usuario_id = :u AND f.treino_nome = :t
             ORDER BY f.id ASC
         """)
-        exercicios_na_ficha = pd.read_sql(query_check, conn, params={"u": id_aluno_atual, "t": treino_atual})
+        exercicios_na_ficha = pd.read_sql(query_check, conn, params={"u": id_aluno_atual, "t": treino_selecionado})
 
     # 3. FORMULÁRIO DE CADASTRO
     if 'reset_trigger' not in st.session_state: st.session_state.reset_trigger = 0
 
-    with st.form(key=f"form_v12_{id_aluno_atual}_{treino_atual}_{st.session_state.reset_trigger}"):
-        st.subheader(f"Adicionar ao {treino_atual}")
+    with st.form(key=f"form_v13_{id_aluno_atual}_{treino_selecionado}_{st.session_state.reset_trigger}"):
+        st.subheader(f"Adicionar ao {treino_selecionado}")
         
         ex_base = st.selectbox("1. Escolha o Exercício:", biblioteca_df['nome'].tolist())
         
@@ -229,7 +229,7 @@ elif menu == "📝 Montar Treino":
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
                 """), {
-                    "u": id_aluno_atual, "t": treino_atual, "e": id_ex_modelo, 
+                    "u": id_aluno_atual, "t": treino_selecionado, "e": id_ex_modelo, 
                     "s": series_v, "r": meta_v, "cg": carga_v, "td": descanso_v, 
                     "tm": tipo_m, "ob": obs_v, "cb": id_vinculo
                 })
@@ -237,14 +237,14 @@ elif menu == "📝 Montar Treino":
             st.session_state.reset_trigger += 1
             st.rerun()
 
-    # 4. TABELA DE CONFERÊNCIA E EXCLUSÃO (Variáveis corrigidas aqui)
+    # 4. TABELA DE CONFERÊNCIA E EXCLUSÃO
     st.divider()
-    st.subheader(f"📋 Exercícios atuais no {treino_atual}")
+    st.subheader(f"📋 Exercícios atuais no {treino_selecionado}")
     if not exercicios_na_ficha.empty:
         for _, r in exercicios_na_ficha.iterrows():
             col1, col2 = st.columns([4, 1])
             col1.write(f"🔹 **{r['nome']}**")
-            if col2.button("🗑️", key=f"del_item_{r['id']}"):
+            if col2.button("🗑️", key=f"del_final_{r['id']}"):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
                 st.rerun()
@@ -252,34 +252,17 @@ elif menu == "📝 Montar Treino":
         # --- ZONA DE EXCLUSÃO COMPLETA ---
         st.write("---")
         with st.expander("⚠️ ZONA DE PERIGO: Excluir Treino Completo"):
-            st.warning(f"Isso apagará TODOS os exercícios do **{treino_atual}** de **{aluno_escolhido}**.")
-            confirmar_del = st.checkbox("Confirmo que desejo apagar a ficha inteira.")
-            if st.button(f"🔥 APAGAR {treino_atual.upper()} AGORA", type="primary", disabled=not confirmar_del):
+            st.warning(f"Isso apagará TODOS os exercícios do **{treino_selecionado}** de **{aluno_escolhido}**.")
+            confirmar_exclusao = st.checkbox("Confirmo que desejo apagar a ficha inteira.")
+            if st.button(f"🔥 APAGAR {treino_selecionado.upper()} AGORA", type="primary", disabled=not confirmar_exclusao):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM fichas_treino WHERE usuario_id = :u AND treino_nome = :t"),
-                                 {"u": id_aluno_atual, "t": treino_atual})
+                                 {"u": id_aluno_atual, "t": treino_selecionado})
                 st.success("Ficha excluída com sucesso!")
                 time.sleep(1)
                 st.rerun()
     else:
-        st.info(f"Nenhum exercício cadastrado no {treino_atual} para este aluno.")
-
-    # 4. TABELA DE VISUALIZAÇÃO (Para você ver a ficha a ser montada em tempo real)
-    st.divider()
-    st.subheader(f"📋 Exercícios actuais no {t_nome}")
-    if not atuais_na_ficha.empty:
-        # Mostra o que já está na ficha para dar segurança ao treinador
-        st.table(atuais_na_ficha[['nome']])
-    else:
-        st.info("Nenhum exercício lançado para este treino.")
-
-    # 4. TABELA DE CONFERÊNCIA (Opcional, mas ajuda muito)
-    st.divider()
-    st.subheader(f"📋 Resumo do {t_nome}")
-    if not atuais_na_ficha.empty:
-        st.dataframe(atuais_na_ficha[['nome']], use_container_width=True)
-    else:
-        st.info("Nenhum exercício neste treino ainda.")
+        st.info(f"Nenhum exercício cadastrado no {treino_selecionado} para este aluno.")
 
 # --- 4. BIBLIOTECA ---
 elif menu == "⚙️ Biblioteca":
