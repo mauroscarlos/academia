@@ -52,6 +52,33 @@ if menu == "🏋️ Treinar Agora":
         st.warning("Nenhuma ficha encontrada.")
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
+
+        # --- NOVO: BOTÃO DE EXPORTAR PARA O ALUNO ---
+        # Pegamos os dados atuais da tela para gerar o arquivo
+        df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
+        
+        if not df_ex.empty:
+            with st.expander("📥 Baixar Ficha / Acessar Offline"):
+                # Texto para copiar (WhatsApp)
+                texto_offline = f"🏋️ *MEU TREINO: {t_sel}*\n"
+                for _, r in df_ex.iterrows():
+                    texto_offline += f"\n🔹 *{r['nome']}*\n   {r['series']}x {r['repeticoes']} | Descanso: {r['tempo_descanso']}s"
+                
+                st.text_area("Copie para o seu WhatsApp ou Notas:", texto_offline, height=150)
+                
+                # Botão para baixar CSV (Excel)
+                csv_data = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso', 'carga_atual']].to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📊 Baixar Planilha (CSV)",
+                    data=csv_data,
+                    file_name=f'Treino_{t_sel}.csv',
+                    mime='text/csv',
+                    use_container_width=True
+                )
+        
+        st.divider()
+        # --- FIM DA EXPORTAÇÃO ---
+
         if 'treino_andamento' not in st.session_state: st.session_state.treino_andamento = False
         
         if st.session_state.treino_andamento:
@@ -66,7 +93,7 @@ if menu == "🏋️ Treinar Agora":
             if st.button("🚀 INICIAR TREINO", type="primary"):
                 st.session_state.treino_andamento = True; st.session_state.inicio_t = datetime.now(); st.rerun()
 
-        df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
+        # O restante do código de exibição continua igual
         nomes_no_par = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
 
         for _, row in df_ex.iterrows():
