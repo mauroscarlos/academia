@@ -23,8 +23,14 @@ def get_engine():
     
     return create_engine(conn_url, pool_pre_ping=True)
 
+try:
+    engine = get_engine()
+except Exception as e:
+    st.error(f"Erro crítico na conexão: {e}")
+    st.stop()
+
 # ESTA LINHA É ESSENCIAL: Ela cria a variável que o restante do código usa
-engine = get_engine()
+# engine = get_engine()
 
 # --- ESTILIZAÇÃO CSS ---
 st.markdown("""
