@@ -65,19 +65,48 @@ if menu == "🏋️ Treinar Agora":
         
         if not df_ex.empty:
             with st.expander("📲 Exportar treino para área de transferência"):
-                texto_para_copiar = f"🏋️ TREINO: {t_sel}\n"
-                texto_para_copiar += "---------------------------------\n"
+                texto_para_copiar = f"🏋️ TREINO: {t_sel}\\n"
+                texto_para_copiar += "---------------------------------\\n"
                 
                 for _, r in df_ex.iterrows():
-                    # Formato: Exercício - Séries - Reps - Descanso
-                    linha = f"🔹 {r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s\n"
+                    linha = f"🔹 {r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s\\n"
                     texto_para_copiar += linha
                 
-                texto_para_copiar += "---------------------------------\n"
+                texto_para_copiar += "---------------------------------\\n"
                 texto_para_copiar += "💪 Foco no treino! Gerado por SGF Elite."
 
-                st.info("Clique no ícone de copiar (canto superior direito do quadro abaixo) e cole no seu WhatsApp ou Notas.")
-                st.code(texto_para_copiar, language=None)
+                # --- BOTÃO DE CÓPIA VIA JAVASCRIPT ---
+                # Criamos um botão HTML que faz o trabalho de copiar
+                st.components.v1.html(f"""
+                    <div style="text-align: center;">
+                        <textarea id="textoTreino" style="display:none;">{texto_para_copiar}</textarea>
+                        <button onclick="copiarTexto()" style="
+                            background-color: #ff4b4b; 
+                            color: white; 
+                            border: none; 
+                            padding: 15px 30px; 
+                            border-radius: 10px; 
+                            font-weight: bold; 
+                            cursor: pointer;
+                            width: 100%;
+                            font-size: 16px;
+                        "> 📋 CLIQUE AQUI PARA COPIAR O TREINO </button>
+                    </div>
+
+                    <script>
+                        function copiarTexto() {{
+                            var copyText = document.getElementById("textoTreino");
+                            copyText.style.display = "block";
+                            copyText.select();
+                            copyText.setSelectionRange(0, 99999);
+                            document.execCommand("copy");
+                            copyText.style.display = "none";
+                            alert("✅ Treino copiado! Agora é só colar no seu WhatsApp.");
+                        }}
+                    </script>
+                """, height=80)
+
+                st.caption("Depois de clicar, abra seu WhatsApp e use a função 'Colar'.")
 
         st.divider()
 
