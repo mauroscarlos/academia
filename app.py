@@ -140,7 +140,7 @@ elif menu == "📝 Montar Treino":
     with st.container(border=True):
         st.subheader("Configurar Exercício(s)")
         
-        # Escolha dos Exercícios
+        # 1. Escolha dos Exercícios
         ex1 = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex1_{st.session_state.form_token}")
         ex2_check = st.selectbox("2. Combinar com outro (Bi-set)?", ["Não", "Sim"], key=f"ex2_check_{st.session_state.form_token}")
         
@@ -151,41 +151,42 @@ elif menu == "📝 Montar Treino":
         st.divider()
 
         # --- LINHA ÚNICA DINÂMICA ---
-        # Definindo as colunas: Tipo, Séries, Reps (1 ou 2), Descanso, Carga
+        # Definimos o rótulo dinâmico baseado na escolha do Tipo
+        tipo_meta_v = st.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+        label_dinamico = "Tempo" if tipo_meta_v == "Tempo (s)" else "Reps"
+
         if ex2_check == "Sim":
-            # Layout para Bi-set (Mais colunas para caber as duas Reps)
-            c_tipo, c_ser, c_r1, c_r2, c_desc, c_carga = st.columns([2.5, 1, 1.5, 1.5, 1, 1])
+            # Layout para Bi-set: Tipo (acima) + Linha compacta (Séries, R1, R2, Descanso, Carga)
+            c_ser, c_r1, c_r2, c_desc, c_carga = st.columns([1, 1.5, 1.5, 1, 1])
             
-            tipo_meta_v = c_tipo.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
             series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            reps1 = c_r1.text_input(f"Reps {ex1.split()[0]}", "12", key=f"r1_{st.session_state.form_token}")
-            reps2 = c_r2.text_input(f"Reps {ex2.split()[0]}", "10", key=f"r2_{st.session_state.form_token}")
+            # Rótulos específicos para cada exercício no Bi-set
+            reps1 = c_r1.text_input(f"{label_dinamico} ({ex1.split()[0]})", "12", key=f"r1_{st.session_state.form_token}")
+            reps2 = c_r2.text_input(f"{label_dinamico} ({ex2.split()[0]})", "10", key=f"r2_{st.session_state.form_token}")
             descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
             carga = c_carga.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
         else:
-            # Layout para Exercício Simples
-            c_tipo, c_ser, c_r1, c_desc, c_carga = st.columns([3, 1, 2, 1, 1])
+            # Layout para Exercício Simples: Séries, Reps/Tempo, Descanso, Carga
+            c_ser, c_rep, c_desc, c_carga = st.columns([1, 2, 1, 1])
             
-            tipo_meta_v = c_tipo.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
             series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            reps1 = c_r1.text_input("Reps", "12", key=f"r1_{st.session_state.form_token}")
-            reps2 = "12" # Valor padrão oculto
+            reps1 = c_rep.text_input(label_dinamico, "12", key=f"r1_{st.session_state.form_token}")
+            reps2 = "12" # Valor oculto
             descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
             carga = c_carga.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
 
         st.write("") 
         if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
             id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
-            exercicio_biset = ex2 if ex2_check == "Sim" else None
             
             with engine.begin() as conn:
-                # Salva o Primeiro (Se for bi-set, descanso é 0 pq vai direto pro prox)
+                # Salva o Primeiro
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                 """), {
                     "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, 
-                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": exercicio_biset
+                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": ex2 if ex2_check == "Sim" else None
                 })
                 
                 # Se for Bi-set, salva o Segundo
@@ -199,8 +200,9 @@ elif menu == "📝 Montar Treino":
                         "cg": carga, "td": descanso, "tm": tipo_meta_v, "cb": None
                     })
             
+            # Reset do formulário
             st.session_state.form_token += 1
-            st.success("Salvo!")
+            st.success("Salvo com sucesso!")
             time.sleep(1)
             st.rerun()
 
