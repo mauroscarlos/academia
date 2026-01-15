@@ -39,486 +39,120 @@ if not st.session_state.logado:
 # --- MENU LATERAL ---
 with st.sidebar:
     st.title("SGF Elite")
-    # Adicionamos a opção "⚙️ Treinos" no menu principal
-    menu = st.sidebar.radio("Navegação", ["🏋️ Treinar Agora", "⚙️ Treinos", "📊 Relatórios", "🚪 Sair"])
-    
+    menu = st.radio("Navegação", ["🏋️ Treinar Agora", "⚙️ Treinos", "📊 Relatórios", "🚪 Sair"])
+
+# --- 🚪 SAIR ---
+if menu == "🚪 Sair":
+    st.session_state.clear()
+    st.rerun()
+
 # --- ⚙️ GESTÃO DE TREINOS (ADMIN) ---
-# Substitua todo o bloco do menu de montagem/gestão por este:
 elif menu == "⚙️ Treinos":
     st.header("⚙️ Gestão de Treinos")
-    
-    # Abas para organizar as funções
     tab_montar, tab_editar = st.tabs(["🆕 Montar Novo Treino", "✏️ Editar/Reordenar Treinos"])
 
-    # --- ABA 1: MONTAR NOVO TREINO ---
-    # --- ⚙️ GESTÃO DE TREINOS (ADMIN) ---
-    elif menu == "⚙️ Treinos":
-        st.header("⚙️ Gestão de Treinos")
+    with tab_montar:
+        st.subheader("📝 Prescrever Treino")
+        st.cache_data.clear()
         
-        tab_montar, tab_editar = st.tabs(["🆕 Montar Novo Treino", "✏️ Editar/Reordenar"])
-
-        with tab_montar:
-            st.subheader("📝 Prescrever Novo Treino")
-            # Aqui você vai colar o seu formulário original de cadastro depois que o erro sumir.
-            st.info("Aba para cadastrar novos exercícios.")
-
-        with tab_editar:
-            st.subheader("✏️ Editar ou Reordenar")
-            try:
-                # Busca alunos
-                df_alunos = pd.read_sql(text("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome"), engine)
-                
-                if df_alunos.empty:
-                    st.warning("Nenhum aluno cadastrado.")
-                else:
-                    al_sel_ed = st.selectbox("Selecione o Aluno:", df_alunos['nome'].tolist(), key="al_edit_v1")
-                    id_al_ed = int(df_alunos[df_alunos['nome'] == al_sel_ed]['id'].values[0])
-
-                    # Busca treinos
-                    df_tr_ed = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": id_al_ed})
-                    
-                    if df_tr_ed.empty:
-                        st.info("Este aluno não tem treinos.")
-                    else:
-                        tr_ed_sel = st.selectbox("Selecione a Ficha:", df_tr_ed['treino_nome'].tolist(), key="tr_edit_v1")
-
-                        # Busca exercícios
-                        df_fichas_ed = pd.read_sql(text("""
-                            SELECT f.id, e.nome as ex_nome, f.series, f.repeticoes, f.carga_atual, f.ordem
-                            FROM fichas_treino f
-                            JOIN exercicios_biblioteca e ON f.exercicio_id = e.id
-                            WHERE f.usuario_id = :u AND f.treino_nome = :t
-                            ORDER BY f.ordem ASC, f.id ASC
-                        """), engine, params={"u": id_al_ed, "t": tr_ed_sel})
-
-                        with st.form("form_edicao_lote_v1"):
-                            lista_upd = []
-                            for _, row in df_fichas_ed.iterrows():
-                                with st.container(border=True):
-                                    c1, c2, c3, c4, c5 = st.columns([3, 1, 2, 1, 1])
-                                    with c1: st.write(f"**{row['ex_nome']}**")
-                                    with c2: o = st.number_input("Ordem", value=int(row['ordem']), key=f"o_{row['id']}")
-                                    with c3: r = st.text_input("Reps", value=row['repeticoes'], key=f"r_{row['id']}")
-                                    with c4: k = st.number_input("Kg", value=int(row['carga_atual']), key=f"k_{row['id']}")
-                                    with c5: d = st.checkbox("🗑️", key=f"d_{row['id']}")
-                                    lista_upd.append({"id": row['id'], "o": o, "r": r, "k": k, "d": d})
-                            
-                            if st.form_submit_button("💾 SALVAR ALTERAÇÕES", type="primary"):
-                                with engine.begin() as conn:
-                                    for item in lista_upd:
-                                        if item['d']:
-                                            conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": item['id']})
-                                        else:
-                                            conn.execute(text("UPDATE fichas_treino SET ordem = :o, repeticoes = :r, carga_atual = :c WHERE id = :id"), 
-                                                         {"o": item['o'], "r": item['r'], "c": item['k'], "id": item['id']})
-                                st.success("Atualizado!")
-                                st.rerun()
-            except Exception as e:
-                st.error(f"Erro: {e}")
-        
-        # Consulta de alunos e biblioteca (Usando text() para evitar o erro do print cd0fe4)
         alunos = pd.read_sql(text("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome"), engine)
         bib = pd.read_sql(text("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome"), engine)
         
-        if alunos.empty:
-            st.warning("Cadastre alunos primeiro.")
-        else:
-            c_al, c_tr = st.columns(2)
-            al_sel = c_al.selectbox("Aluno:", alunos['nome'].tolist(), key="aluno_novo")
-            id_al = int(alunos[alunos['nome'] == al_sel]['id'].values[0])
-            tr_sel = c_tr.selectbox("Ficha:", ["Treino A", "Treino B", "Treino C", "Treino D", "Treino E"], key="ficha_nova")
+        c_al, c_tr = st.columns(2)
+        al_sel = c_al.selectbox("Aluno:", alunos['nome'].tolist(), key="n_al")
+        id_al = int(alunos[alunos['nome'] == al_sel]['id'].values[0])
+        tr_sel = c_tr.selectbox("Ficha:", ["Treino A", "Treino B", "Treino C", "Treino D", "Treino E"], key="n_tr")
 
-            st.subheader("🎯 Grupos Musculares")
-            if 'lista_grupos_ficha' not in st.session_state:
-                st.session_state.lista_grupos_ficha = ["Peito"]
+        # Grupos Musculares
+        if 'lista_grupos_ficha' not in st.session_state: st.session_state.lista_grupos_ficha = ["Peito"]
+        grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio", "Glúteos", "Antebraço"]
 
-            grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio", "Glúteos", "Antebraço"]
+        for i, grupo_atual in enumerate(st.session_state.lista_grupos_ficha):
+            st.session_state.lista_grupos_ficha[i] = st.selectbox(f"Grupo {i+1}", grupos_disponiveis, key=f"g_{i}")
 
-            for i, grupo_atual in enumerate(st.session_state.lista_grupos_ficha):
-                st.session_state.lista_grupos_ficha[i] = st.selectbox(
-                    f"Grupo {i+1}", 
-                    grupos_disponiveis, 
-                    index=grupos_disponiveis.index(grupo_atual) if grupo_atual in grupos_disponiveis else 0,
-                    key=f"grupo_sel_{i}"
-                )
+        c_b1, c_b2, _ = st.columns([1, 1, 2])
+        if c_b1.button("➕ Adicionar Grupo"): 
+            st.session_state.lista_grupos_ficha.append("Peito")
+            st.rerun()
+        if c_b2.button("🗑️ Remover Último") and len(st.session_state.lista_grupos_ficha) > 1:
+            st.session_state.lista_grupos_ficha.pop()
+            st.rerun()
 
-            c_btn1, c_btn2, _ = st.columns([1, 1, 2])
-            if c_btn1.button("➕ Adicionar Grupo"):
-                st.session_state.lista_grupos_ficha.append("Peito")
+        with st.container(border=True):
+            ex1 = st.selectbox("1. Exercício Principal:", bib['nome'].tolist(), key="ex1")
+            ex2_chk = st.selectbox("2. Bi-set?", ["Não", "Sim"], key="ex2_c")
+            ex2 = st.selectbox("Selecione o segundo:", bib['nome'].tolist(), key="ex2") if ex2_chk == "Sim" else None
+            
+            # Linha de comandos (Séries, Reps, etc)
+            c_tp, c_sr, c_rp, c_ds, c_cg = st.columns([1.5, 0.8, 2, 0.8, 0.8])
+            tipo_m = c_tp.selectbox("Tipo", ["Reps", "Tempo", "Pirâmide"], key="tm")
+            series = c_sr.number_input("Séries", 1, 12, 3)
+            reps = c_rp.text_input("Reps/Tempo", "12")
+            desc = c_ds.number_input("Desc.", 0, 300, 60)
+            carga = c_cg.text_input("Kg", "10")
+
+            if st.button("✅ SALVAR NA FICHA", type="primary", use_container_width=True):
+                id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
+                with engine.begin() as conn:
+                    conn.execute(text("INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)"),
+                                {"u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps, "cg": carga, "td": desc, "tm": tipo_m, "cb": ex2})
+                st.success("Salvo!")
                 st.rerun()
-            if c_btn2.button("🗑️ Remover Último") and len(st.session_state.lista_grupos_ficha) > 1:
-                st.session_state.lista_grupos_ficha.pop()
-                st.rerun()
 
-            lista_bib = bib['nome'].tolist()
-            if 'form_token' not in st.session_state: st.session_state.form_token = 0
-
-            with st.container(border=True):
-                st.subheader("Configurar Exercício")
-                ex1 = st.selectbox("1. Exercício:", lista_bib, key=f"ex1_{st.session_state.form_token}")
-                ex2_check = st.selectbox("2. Bi-set?", ["Não", "Sim"], key=f"ex2_chk_{st.session_state.form_token}")
-                ex2 = "Não"
-                if ex2_check == "Sim":
-                    ex2 = st.selectbox("Segundo Exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
-                
-                # Cole aqui o restante do seu código de cadastro (Séries, Reps, Botão Salvar)
-                st.divider()
-                st.info("Complete com seus campos de Séries/Reps e o botão de Salvar.")
-
-    # --- ABA 2: EDITAR / REORDENAR ---
     with tab_editar:
         st.subheader("✏️ Editar ou Reordenar")
-        try:
-            al_sel_ed = st.selectbox("Aluno para gerir:", alunos['nome'].tolist(), key="al_edit")
-            id_al_ed = int(alunos[alunos['nome'] == al_sel_ed]['id'].values[0])
-
-            df_tr_ed = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": id_al_ed})
+        al_ed = st.selectbox("Aluno para gerir:", alunos['nome'].tolist(), key="ed_al")
+        id_ed = int(alunos[alunos['nome'] == al_ed]['id'].values[0])
+        
+        df_tr_ed = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": id_ed})
+        if not df_tr_ed.empty:
+            tr_ed = st.selectbox("Ficha:", df_tr_ed['treino_nome'].tolist(), key="ed_tr")
+            df_f = pd.read_sql(text("SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, f.ordem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.ordem ASC, f.id ASC"), engine, params={"u":id_ed, "t":tr_ed})
             
-            if df_tr_ed.empty:
-                st.info("Aluno sem treinos.")
-            else:
-                tr_ed_sel = st.selectbox("Treino para editar:", df_tr_ed['treino_nome'].tolist(), key="tr_edit")
+            with st.form("ed_lote"):
+                upds = []
+                for _, r in df_f.iterrows():
+                    c1, c2, c3, c4, c5 = st.columns([3, 1, 1, 1, 1])
+                    with c1: st.write(f"**{r['nome']}**")
+                    with c2: o = st.number_input("Ordem", value=int(r['ordem']), key=f"o{r['id']}")
+                    with c3: rp = st.text_input("Reps", value=r['repeticoes'], key=f"r{r['id']}")
+                    with c4: cg = st.number_input("Kg", value=int(r['carga_atual']), key=f"k{r['id']}")
+                    with c5: d = st.checkbox("🗑️", key=f"d{r['id']}")
+                    upds.append({"id": r['id'], "o": o, "r": rp, "k": cg, "d": d})
+                
+                if st.form_submit_button("💾 SALVAR ALTERAÇÕES"):
+                    with engine.begin() as conn:
+                        for i in upds:
+                            if i['d']: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": i['id']})
+                            else: conn.execute(text("UPDATE fichas_treino SET ordem=:o, repeticoes=:r, carga_atual=:c WHERE id=:id"), {"o":i['o'], "r":i['r'], "c":i['k'], "id":i['id']})
+                    st.rerun()
 
-                df_fichas_ed = pd.read_sql(text("""
-                    SELECT f.id, e.nome as ex_nome, f.series, f.repeticoes, f.carga_atual, f.ordem
-                    FROM fichas_treino f
-                    JOIN exercicios_biblioteca e ON f.exercicio_id = e.id
-                    WHERE f.usuario_id = :u AND f.treino_nome = :t
-                    ORDER BY f.ordem ASC, f.id ASC
-                """), engine, params={"u": id_al_ed, "t": tr_ed_sel})
-
-                with st.form("form_edicao_lote"):
-                    lista_upd = []
-                    for _, row in df_fichas_ed.iterrows():
-                        with st.container(border=True):
-                            c1, c2, c3, c4, c5 = st.columns([3, 1, 2, 1, 1])
-                            with c1: st.write(f"**{row['ex_nome']}**")
-                            with c2: o = st.number_input("Ordem", value=int(row['ordem']), key=f"o_{row['id']}")
-                            with c3: r = st.text_input("Reps", value=row['repeticoes'], key=f"r_{row['id']}")
-                            with c4: k = st.number_input("Kg", value=int(row['carga_atual']), key=f"k_{row['id']}")
-                            with c5: d = st.checkbox("🗑️", key=f"d_{row['id']}")
-                            lista_upd.append({"id": row['id'], "o": o, "r": r, "k": k, "d": d})
-                    
-                    if st.form_submit_button("💾 SALVAR ALTERAÇÕES", type="primary", use_container_width=True):
-                        with engine.begin() as conn:
-                            for item in lista_upd:
-                                if item['d']:
-                                    conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": item['id']})
-                                else:
-                                    conn.execute(text("""
-                                        UPDATE fichas_treino SET ordem = :o, repeticoes = :r, carga_atual = :c 
-                                        WHERE id = :id
-                                    """), {"o": item['o'], "r": item['r'], "c": item['k'], "id": item['id']})
-                        st.success("Ficha atualizada!")
-                        st.rerun()
-        except Exception as e:
-            st.error(f"Erro na gestão: {e}")
-
-# --- 2. TREINAR AGORA (ALUNO) ---
-if menu == "🏋️ Treinar Agora":
+# --- 🏋️ TREINAR AGORA (ALUNO) ---
+elif menu == "🏋️ Treinar Agora":
     df_t = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": st.session_state.user_id})
-    if df_t.empty:
-        st.warning("Nenhuma ficha encontrada.")
+    if df_t.empty: st.warning("Sem fichas.")
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
-
-        # --- EXPORTAÇÃO (CONSULTA COM ORDEM CORRIGIDA) ---
-        df_ex = pd.read_sql(text("""
-            SELECT f.*, e.nome, e.url_imagem 
-            FROM fichas_treino f 
-            JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
-            WHERE f.usuario_id = :u AND f.treino_nome = :t 
-            ORDER BY f.ordem ASC, f.id ASC
-        """), engine, params={"u": st.session_state.user_id, "t": t_sel})
+        df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.ordem ASC, f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
-            with st.expander("📲 Exportar treino para área de transferência"):
-                lista_treino = [f"TREINO: {t_sel}", "---------------------------------"]
-                
-                for _, r in df_ex.iterrows():
-                    linha = f"{r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s"
-                    lista_treino.append(linha)
-                
-                texto_final = "\n".join(lista_treino)
-
-                st.components.v1.html(f"""
-                    <div style="text-align: center;">
-                        <textarea id="textoTreino" style="display:none;">{texto_final}</textarea>
-                        <button onclick="copiarTexto()" style="
-                            background-color: #25D366; 
-                            color: white; 
-                            border: none; 
-                            padding: 12px; 
-                            border-radius: 8px; 
-                            font-weight: bold; 
-                            cursor: pointer;
-                            width: 100%;
-                            font-size: 14px;
-                        "> 📋 COPIAR TREINO (TEXTO LIMPO) </button>
-                    </div>
-
-                    <script>
-                        function copiarTexto() {{
-                            var text = `{texto_final}`;
-                            var dummy = document.createElement("textarea");
-                            document.body.appendChild(dummy);
-                            dummy.value = text;
-                            dummy.select();
-                            document.execCommand("copy");
-                            document.body.removeChild(dummy);
-                            alert("Copiado! Só colar no WhatsApp.");
-                        }}
-                    </script>
-                """, height=70)
-                
-                st.text(texto_final)
-                st.caption("Depois de clicar, abra seu WhatsApp e use a função 'Colar'.")
+            with st.expander("📲 Exportar treino"):
+                txt = f"TREINO: {t_sel}\n" + "\n".join([f"{r['nome']} - {r['series']}x{r['repeticoes']}" for _, r in df_ex.iterrows()])
+                st.components.v1.html(f'<button onclick="navigator.clipboard.writeText(\'{txt.encode("unicode_escape").decode()}\'); alert(\'Copiado!\')" style="width:100%; padding:10px; background:#25D366; color:white; border:none; border-radius:5px; cursor:pointer;">📋 COPIAR TREINO</button>', height=50)
+                st.text(txt)
 
         st.divider()
-
-        if 'treino_andamento' not in st.session_state: 
-            st.session_state.treino_andamento = False
-        
-        if st.session_state.treino_andamento:
-            tempo = datetime.now() - st.session_state.inicio_t
-            st.success(f"⏱️ Tempo de Treino: {str(tempo).split('.')[0]}")
-            if st.button("🏁 FINALIZAR TREINO"):
-                minutos = int(tempo.total_seconds() / 60)
-                with engine.begin() as conn:
-                    conn.execute(text("INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos) VALUES (:u, :t, :d)"), {"u": st.session_state.user_id, "t": t_sel, "d": minutos})
-                st.session_state.treino_andamento = False
-                st.rerun()
-        else:
-            if st.button("🚀 INICIAR TREINO", type="primary"):
-                st.session_state.treino_andamento = True
-                st.session_state.inicio_t = datetime.now()
-                st.rerun()
-
-        # Renderização dos Cards respeitando a ordem definida pelo Admin
-        nomes_no_par = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
+        if st.button("🚀 INICIAR TREINO" if 'iniciado' not in st.session_state else "🏁 FINALIZAR"):
+            st.session_state.iniciado = True
+            st.rerun()
 
         for _, row in df_ex.iterrows():
             with st.container(border=True):
                 c1, c2 = st.columns([1, 2])
-                with c1: 
-                    st.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150", use_container_width=True)
-                with c2:
-                    st.subheader(row['nome'])
-                    if row['exercicio_combinado_id']: 
-                        st.caption(f"🔗 BI-SET COM: {row['exercicio_combinado_id']}")
-                    st.write(f"🎯 {row['series']}x {row['repeticoes']} | ⚖️ {row['carga_atual']}kg")
-                    
-                    if st.session_state.treino_andamento:
-                        if row['nome'] in nomes_no_par:
-                            st.error("🚫 SEM DESCANSO! Vá para o próximo exercício.")
-                        else:
-                            if st.button(f"⏱️ Descanso {row['tempo_descanso']}s", key=f"d_{row['id']}"):
-                                p = st.empty()
-                                for t_cnt in range(int(row['tempo_descanso']), -1, -1):
-                                    p.metric("Descanso", f"{t_cnt}s")
-                                    time.sleep(1)
-                                p.success("VAI!")
+                c1.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150")
+                c2.subheader(row['nome'])
+                c2.write(f"🎯 {row['series']}x {row['repeticoes']} | ⚖️ {row['carga_atual']}kg")
 
-# --- 3. MONTAR TREINO (COM GRUPOS MUSCULARES) ---
-elif menu == "📝 Montar Treino":
-    st.header("📝 Prescrever Treino")
-    st.cache_data.clear()
-    
-    alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
-    bib = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
-    
-    c_al, c_tr = st.columns(2)
-    al_sel = c_al.selectbox("Aluno:", alunos['nome'].tolist())
-    id_al = int(alunos[alunos['nome'] == al_sel]['id'].values[0])
-    tr_sel = c_tr.selectbox("Ficha:", ["Treino A", "Treino B", "Treino C", "Treino D", "Treino E"])
-
-    # --- NOVO: LÓGICA DE GRUPOS DINÂMICOS ---
-    st.subheader("🎯 Grupos Musculares da Ficha")
-    
-    # Inicializa a lista de grupos no estado da sessão se não existir
-    if 'lista_grupos_ficha' not in st.session_state:
-        st.session_state.lista_grupos_ficha = ["Peito"] # Começa com um padrão
-
-    grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio", "Glúteos", "Antebraço"]
-
-    # Renderiza os seletores baseados no que está na lista
-    col_g1, col_g2 = st.columns([3, 1])
-    
-    for i, grupo_atual in enumerate(st.session_state.lista_grupos_ficha):
-        st.session_state.lista_grupos_ficha[i] = st.selectbox(
-            f"Grupo {i+1}", 
-            grupos_disponiveis, 
-            index=grupos_disponiveis.index(grupo_atual) if grupo_atual in grupos_disponiveis else 0,
-            key=f"grupo_sel_{i}"
-        )
-
-    # Botões para adicionar ou remover campos
-    c_btn1, c_btn2, _ = st.columns([1, 1, 2])
-    if c_btn1.button("➕ Adicionar Grupo"):
-        st.session_state.lista_grupos_ficha.append("Peito")
-        st.rerun()
-    
-    if c_btn2.button("🗑️ Remover Último") and len(st.session_state.lista_grupos_ficha) > 1:
-        st.session_state.lista_grupos_ficha.pop()
-        st.rerun()
-
-    # Cria o texto final que será exibido (ex: "Peito + Tríceps")
-    foco_texto = " + ".join(list(set(st.session_state.lista_grupos_ficha))) # 'set' remove duplicados acidentais
-    st.info(f"**Foco do {tr_sel}:** {foco_texto}")
-
-    lista_bib = bib['nome'].tolist()
-    if 'form_token' not in st.session_state: st.session_state.form_token = 0
-
-    with st.container(border=True):
-        st.subheader("Configurar Exercício(s)")
-        
-        # Seleção de Exercícios (Campos de busca costumam ser largos, mantidos em destaque)
-        ex1 = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex1_{st.session_state.form_token}")
-        ex2_check = st.selectbox("2. Combinar com outro (Bi-set)?", ["Não", "Sim"], key=f"ex2_check_{st.session_state.form_token}")
-        
-        ex2 = "Não"
-        if ex2_check == "Sim":
-            ex2 = st.selectbox("Selecione o segundo exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
-        
-        st.divider()
-
-        # --- A LINHA ÚNICA DEFINITIVA ---
-        if ex2_check == "Sim":
-            # Layout Bi-set: Tipo, Séries, R1, R2, Desc, Kg
-            c_tp, c_sr, c_r1, c_r2, c_ds, c_cg = st.columns([1.5, 0.8, 1.2, 1.2, 0.8, 0.8])
-            tipo_meta_v = c_tp.selectbox("Tipo", ["Reps", "Tempo", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-            series = c_sr.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            
-            label_din = "Tempo" if tipo_meta_v == "Tempo" else "Reps"
-            final_reps1 = c_r1.text_input(f"{label_din} 1", "12", key=f"r1_{st.session_state.form_token}")
-            final_reps2 = c_r2.text_input(f"{label_din} 2", "10", key=f"r2_{st.session_state.form_token}")
-            descanso = c_ds.number_input("Desc.", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-            carga = c_cg.text_input("Kg", "10", key=f"cg_{st.session_state.form_token}")
-        
-        else:
-            # Layout Simples: Tipo, Séries, Reps/Tempo, Descanso, Carga
-            c_tp, c_sr, c_rp, c_ds, c_cg = st.columns([1.5, 0.8, 2, 0.8, 0.8])
-            tipo_meta_v = c_tp.selectbox("Tipo", ["Reps", "Tempo", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-            series = c_sr.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            
-            label_din = "Tempo" if tipo_meta_v == "Tempo" else "Reps"
-            final_reps1 = c_rp.text_input(label_din, "12", key=f"r1_{st.session_state.form_token}")
-            final_reps2 = "12"
-            descanso = c_ds.number_input("Desc.", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-            carga = c_cg.text_input("Kg", "10", key=f"cg_{st.session_state.form_token}")
-
-        # Se for Pirâmide, os campos de reps aparecem logo abaixo da linha principal
-        if tipo_meta_v == "Pirâmide":
-            st.write(f"🔢 Reps da Pirâmide ({series} séries):")
-            cols_p = st.columns(series)
-            reps_list = []
-            for i in range(series):
-                r_val = cols_p[i].text_input(f"S{i+1}", "12", key=f"p1_s{i}_{st.session_state.form_token}", label_visibility="collapsed")
-                reps_list.append(r_val)
-            final_reps1 = " - ".join(reps_list)
-
-        st.write("") 
-        if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
-            id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
-            with engine.begin() as conn:
-                conn.execute(text("""
-                    INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
-                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
-                """), {
-                    "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": final_reps1, 
-                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": ex2 if ex2_check == "Sim" else None
-                })
-                
-                if ex2_check == "Sim":
-                    id_ex2 = int(bib[bib['nome'] == ex2]['id'].values[0])
-                    conn.execute(text("""
-                        INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
-                        VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
-                    """), {
-                        "u": id_al, "t": tr_sel, "e": id_ex2, "s": series, "r": final_reps2 if final_reps2 else final_reps1, 
-                        "cg": carga, "td": descanso, "tm": tipo_meta_v, "cb": None
-                    })
-            
-            st.session_state.form_token += 1
-            st.success("Salvo!")
-            time.sleep(0.5)
-            st.rerun()
-
-    st.divider()
-    df_ficha = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
-    if not df_ficha.empty:
-        st.subheader(f"📋 Resumo do {tr_sel}")
-        for _, r in df_ficha.iterrows():
-            c1, c2 = st.columns([4, 1])
-            txt = f"🔹 **{r['nome']}** - {r['repeticoes']} reps"
-            if r['exercicio_combinado_id']: txt += f" (Bi-set com {r['exercicio_combinado_id']})"
-            c1.write(txt)
-            if c2.button("🗑️", key=f"del_{r['id']}"):
-                with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
-                st.rerun()
-
-# --- ESPAÇO PARA EXPORTAÇÃO ---
-    if not df_ficha.empty:
-        st.divider()
-        st.subheader("📤 Exportar para o Aluno")
-        
-        # 1. Gerar Texto Formatado para WhatsApp/Offline
-        texto_treino = f"🏠 *FICHA DE TREINO: {tr_sel}*\n"
-        texto_treino += f"👤 Aluno: {al_sel}\n"
-        texto_treino += "--------------------------\n"
-        
-        for _, r in df_ficha.iterrows():
-            # Busca descanso na ficha para o texto
-            detalhe = pd.read_sql(text("SELECT tempo_descanso FROM fichas_treino WHERE id = :id"), engine, params={"id": r['id']})
-            desc = detalhe.iloc[0]['tempo_descanso'] if not detalhe.empty else 60
-            
-            texto_treino += f"✅ *{r['nome']}*\n"
-            texto_treino += f"   Set: {r['repeticoes']} reps\n"
-            if r['exercicio_combinado_id']:
-                texto_treino += f"   🔗 Bi-set com: {r['exercicio_combinado_id']}\n"
-            texto_treino += f"   ⏱️ Descanso: {desc}s\n\n"
-
-        texto_treino += "--------------------------\n"
-        texto_treino += "💪 Bons treinos! Gerado por SGF Elite."
-
-        # Botões de Exportação
-        col_exp1, col_exp2 = st.columns(2)
-        
-        with col_exp1:
-            st.text_area("Copiar para WhatsApp:", texto_treino, height=200)
-            st.caption("Selecione o texto acima e envie para o aluno.")
-            
-        with col_exp2:
-            # Exportar CSV (Excel/Offline)
-            csv = df_ficha[['nome', 'repeticoes']].to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Baixar Planilha (Excel)",
-                data=csv,
-                file_name=f'Treino_{al_sel}_{tr_sel}.csv',
-                mime='text/csv',
-                use_container_width=True
-            )
-
-# --- 4. BIBLIOTECA / 5. GESTÃO (Estrutura básica para manter o app rodando) ---
-elif menu == "⚙️ Biblioteca":
-    st.header("⚙️ Biblioteca")
-    with st.form("bib"):
-        n = st.text_input("Nome"); g = st.selectbox("Grupo", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen"]); u = st.text_input("URL Imagem")
-        if st.form_submit_button("Salvar"):
-            with engine.begin() as conn: conn.execute(text("INSERT INTO exercicios_biblioteca (nome, grupo_muscular, url_imagem) VALUES (:n, :g, :u)"), {"n":n, "g":g, "u":u})
-            st.rerun()
-    st.dataframe(pd.read_sql("SELECT nome, grupo_muscular FROM exercicios_biblioteca ORDER BY nome", engine), use_container_width=True)
-
-elif menu == "🛡️ Gestão de Usuários":
-    st.header("🛡️ Alunos")
-    with st.form("user"):
-        nome, email, user, senha = st.text_input("Nome"), st.text_input("Email"), st.text_input("Usuário"), st.text_input("Senha")
-        if st.form_submit_button("Cadastrar"):
-            u_l = user.lower().strip().replace(" ", ".")
-            with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, username, senha, nivel) VALUES (:n, :e, :u, :s, 'user')"), {"n":nome, "e":email, "u":u_l, "s":senha})
-            st.rerun()
-    st.dataframe(pd.read_sql("SELECT nome, email, username FROM usuarios WHERE nivel = 'user'", engine), use_container_width=True)
-
-elif menu == "📊 Dashboard":
-    st.title("📈 Dashboard")
-    st.info("Logs de evolução aparecerão aqui conforme os treinos forem finalizados.")
+# --- OUTROS MENUS ---
+elif menu == "📊 Relatórios":
+    st.title("📈 Relatórios em breve")
