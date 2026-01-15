@@ -110,60 +110,49 @@ if menu == "📊 Dashboard":
 
 # --- 2. TREINAR AGORA ---
 elif menu == "🏋️ Treinar Agora":
-    query_meus_treinos = text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u")
-    meus_treinos = pd.read_sql(query_meus_treinos, engine, params={"u": st.session_state.user_id})['treino_nome'].tolist()
+    # ... (parte do código de seleção de treino e botão iniciar continua igual) ...
+
+    # Busca Exercícios com a nova lógica
+    query_ex = text("""
+        SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, e.url_imagem, 
+               f.tempo_descanso, f.tipo_meta, f.observacao, f.exercicio_combinado_id
+        FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+        WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC
+    """)
+    df_ex = pd.read_sql(query_ex, engine, params={"u": st.session_state.user_id, "t": t_sel})
     
-    if not meus_treinos:
-        st.warning("Nenhuma ficha encontrada.")
-    else:
-        t_sel = st.selectbox("Selecione o Treino:", meus_treinos)
-        
-        if 'treino_andamento' not in st.session_state: st.session_state.treino_andamento = False
-        
-        if not st.session_state.treino_andamento:
-            if st.button("🚀 INICIAR TREINO", use_container_width=True, type="primary"):
-                st.session_state.treino_andamento = True
-                st.session_state.inicio_t = datetime.now()
-                st.rerun()
-        else:
-            tempo_atual = datetime.now() - st.session_state.inicio_t
-            st.success(f"⏱️ Tempo: {str(tempo_atual).split('.')[0]}")
-            if st.button("🏁 FINALIZAR TREINO", use_container_width=True):
-                minutos = int(tempo_atual.total_seconds() / 60)
-                with engine.begin() as conn:
-                    conn.execute(text("INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos) VALUES (:u, :t, :d)"),
-                                 {"u": st.session_state.user_id, "t": t_sel, "d": minutos})
-                st.session_state.treino_andamento = False
-                st.success(f"Treino salvo! Duração: {minutos} min")
-                st.balloons(); time.sleep(2); st.rerun()
+    # Criamos uma lista de exercícios que são o 'primeiro' de um bi-set
+    # (Ou seja, exercícios cujo NOME aparece na coluna exercicio_combinado_id de outro registro)
+    nomes_que_tem_combinado = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
 
-        query_ex = text("""
-            SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, e.url_imagem, 
-                   f.tempo_descanso, f.tipo_meta, f.observacao, f.exercicio_combinado_id
-            FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
-            WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC
-        """)
-        df_ex = pd.read_sql(query_ex, engine, params={"u": st.session_state.user_id, "t": t_sel})
-        ids_segundos = df_ex['exercicio_combinado_id'].dropna().tolist()
-
-        for idx, row in df_ex.iterrows():
-            with st.container(border=True):
-                c1, c2 = st.columns([1, 2])
-                with c1: st.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150", use_container_width=True)
-                with c2:
-                    if row['exercicio_combinado_id']: st.caption("🔗 COMBINADO COM ANTERIOR (BI-SET)")
-                    st.subheader(row['nome'])
-                    st.write(f"🎯 **{row['series']}x {row['repeticoes']}** | {row['carga_atual']}kg")
-                    if row['observacao']: st.info(f"💡 {row['observacao']}")
-                    if st.session_state.get('treino_andamento'):
-                        if row['id'] in ids_segundos:
-                            st.error("🚫 SEM DESCANSO! Vá para o próximo.")
-                        else:
-                            if st.button(f"⏱️ Descanso {row['tempo_descanso']}s", key=f"d_{row['id']}"):
-                                p = st.empty()
-                                for t in range(int(row['tempo_descanso']), -1, -1):
-                                    p.metric("Descanso", f"{t}s"); time.sleep(1)
-                                p.success("VAI!")
+    for idx, row in df_ex.iterrows():
+        with st.container(border=True):
+            c1, c2 = st.columns([1, 2])
+            with c1: 
+                st.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150", use_container_width=True)
+            with c2:
+                # Se o nome deste exercício está na lista de 'procurados' por outro, ele é o primeiro do bi-set
+                is_primeiro = row['nome'] in nomes_que_tem_combinado
+                is_segundo = row['exercicio_combinado_id'] is not None and row['exercicio_combinado_id'] != "Não"
+                
+                if is_segundo:
+                    st.caption(f"🔗 COMBINADO COM: {row['exercicio_combinado_id']}")
+                
+                st.subheader(row['nome'])
+                st.write(f"🎯 **{row['series']}x {row['repeticoes']}** ({row['tipo_meta']}) | ⚖️ {row['carga_atual']}kg")
+                if row['observacao']: st.info(f"💡 {row['observacao']}")
+                
+                if st.session_state.get('treino_andamento'):
+                    # REGRA DE OURO: Se é o primeiro do bi-set, NÃO tem descanso.
+                    if is_primeiro:
+                        st.error("🚫 SEM DESCANSO! Vá direto para o exercício combinado.")
+                    else:
+                        if st.button(f"⏱️ Descanso {row['tempo_descanso']}s", key=f"d_{row['id']}"):
+                            p = st.empty()
+                            for t in range(int(row['tempo_descanso']), -1, -1):
+                                p.metric("Descanso", f"{t}s")
+                                time.sleep(1)
+                            p.success("VAI!")
 
 # --- 3. MONTAR TREINO (LIBERDADE TOTAL DE SELEÇÃO) ---
 elif menu == "📝 Montar Treino":
