@@ -225,6 +225,48 @@ elif menu == "📝 Montar Treino":
                 with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
                 st.rerun()
 
+# --- ESPAÇO PARA EXPORTAÇÃO ---
+    if not df_ficha.empty:
+        st.divider()
+        st.subheader("📤 Exportar para o Aluno")
+        
+        # 1. Gerar Texto Formatado para WhatsApp/Offline
+        texto_treino = f"🏠 *FICHA DE TREINO: {tr_sel}*\n"
+        texto_treino += f"👤 Aluno: {al_sel}\n"
+        texto_treino += "--------------------------\n"
+        
+        for _, r in df_ficha.iterrows():
+            # Busca descanso na ficha para o texto
+            detalhe = pd.read_sql(text("SELECT tempo_descanso FROM fichas_treino WHERE id = :id"), engine, params={"id": r['id']})
+            desc = detalhe.iloc[0]['tempo_descanso'] if not detalhe.empty else 60
+            
+            texto_treino += f"✅ *{r['nome']}*\n"
+            texto_treino += f"   Set: {r['repeticoes']} reps\n"
+            if r['exercicio_combinado_id']:
+                texto_treino += f"   🔗 Bi-set com: {r['exercicio_combinado_id']}\n"
+            texto_treino += f"   ⏱️ Descanso: {desc}s\n\n"
+
+        texto_treino += "--------------------------\n"
+        texto_treino += "💪 Bons treinos! Gerado por SGF Elite."
+
+        # Botões de Exportação
+        col_exp1, col_exp2 = st.columns(2)
+        
+        with col_exp1:
+            st.text_area("Copiar para WhatsApp:", texto_treino, height=200)
+            st.caption("Selecione o texto acima e envie para o aluno.")
+            
+        with col_exp2:
+            # Exportar CSV (Excel/Offline)
+            csv = df_ficha[['nome', 'repeticoes']].to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Baixar Planilha (Excel)",
+                data=csv,
+                file_name=f'Treino_{al_sel}_{tr_sel}.csv',
+                mime='text/csv',
+                use_container_width=True
+            )
+
 # --- 4. BIBLIOTECA / 5. GESTÃO (Estrutura básica para manter o app rodando) ---
 elif menu == "⚙️ Biblioteca":
     st.header("⚙️ Biblioteca")
