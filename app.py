@@ -19,6 +19,18 @@ def get_engine():
 
 engine = get_engine()
 
+# --- FUNÇÃO DE E-MAIL ---
+def enviar_email_cadastro(nome, email_destino, username, senha):
+    corpo = f"<html><body><h3>Olá, {nome}! 💪</h3><p>Seu acesso ao <b>SGF Treino</b> foi criado.</p><p>Usuário: {username}<br>Senha: {senha}</p></body></html>"
+    try:
+        msg = MIMEMultipart(); msg['From'] = st.secrets["email"]["usuario"]; msg['To'] = email_destino; msg['Subject'] = "🏋️ Acesso SGF Treino"
+        msg.attach(MIMEText(corpo, 'html'))
+        with smtplib.SMTP_SSL(st.secrets["email"]["smtp_server"], st.secrets["email"]["smtp_port"]) as server:
+            server.login(st.secrets["email"]["usuario"], st.secrets["email"]["senha"])
+            server.sendmail(msg['From'], msg['To'], msg.as_string())
+        return True
+    except: return False
+
 # --- LOGIN ---
 if 'logado' not in st.session_state:
     st.session_state.logado = False
@@ -39,105 +51,130 @@ if not st.session_state.logado:
             else: st.error("Acesso negado.")
     st.stop()
 
-# --- ESTADOS DO CRONÔMETRO ---
-if 'treino_em_andamento' not in st.session_state:
-    st.session_state.treino_em_andamento = False
-if 'inicio_treino' not in st.session_state:
-    st.session_state.inicio_treino = None
-
-# --- BARRA LATERAL ---
+# --- MENU LATERAL ---
 st.sidebar.title(f"👋 {st.session_state.user_nome.split()[0]}")
 
-query_meus_treinos = text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u")
-lista_treinos = pd.read_sql(query_meus_treinos, engine, params={"u": st.session_state.user_id})['treino_nome'].tolist()
+# Define as opções baseado no nível
+opcoes = ["📊 Dashboard", "🏋️ Treinar Agora"]
+if st.session_state.user_nivel == 'admin':
+    opcoes.extend(["📝 Montar Treino", "⚙️ Biblioteca", "🛡️ Gestão de Usuários"])
 
-st.sidebar.markdown("---")
-aba_dashboard = st.sidebar.checkbox("📊 Ver Evolução", value=True)
-treino_selecionado = st.sidebar.radio("📋 Meus Treinos:", lista_treinos if lista_treinos else ["Nenhum treino"])
+menu = st.sidebar.radio("Navegação:", opcoes)
 
 if st.sidebar.button("Sair"):
     st.session_state.clear()
     st.rerun()
 
-# --- ÁREA CENTRAL ---
-
-# 1. DASHBOARD (EVOLUÇÃO REAL)
-if aba_dashboard:
-    st.title("📈 Minha Evolução")
+# --- 1. DASHBOARD ---
+if menu == "📊 Dashboard":
+    st.title("📈 Evolução dos Treinos")
     query_logs = text("SELECT data_execucao, duracao_minutos, treino_nome FROM logs_treino WHERE usuario_id = :u ORDER BY data_execucao ASC")
     df_logs = pd.read_sql(query_logs, engine, params={"u": st.session_state.user_id})
     
     if not df_logs.empty:
         c1, c2 = st.columns(2)
         with c1:
-            fig1 = px.line(df_logs, x="data_execucao", y="duracao_minutos", title="Duração dos Treinos (min)", markers=True)
+            fig1 = px.line(df_logs, x="data_execucao", y="duracao_minutos", title="Tempo por Treino (min)", markers=True)
             st.plotly_chart(fig1, use_container_width=True)
         with c2:
-            fig2 = px.pie(df_logs, names="treino_nome", title="Distribuição de Treinos")
+            fig2 = px.pie(df_logs, names="treino_nome", title="Frequência por Treino")
             st.plotly_chart(fig2, use_container_width=True)
     else:
-        st.info("Complete seu primeiro treino para ver os gráficos!")
-    st.divider()
+        st.info("Ainda não há logs de treino para este perfil.")
 
-# 2. ÁREA DE TREINO
-if treino_selecionado and treino_selecionado != "Nenhum treino":
-    st.title(f"💪 {treino_selecionado}")
-
-    # BOTÕES DE CONTROLE DO TEMPO
-    if not st.session_state.treino_em_andamento:
-        if st.button("🚀 INICIAR TREINO", use_container_width=True, type="primary"):
-            st.session_state.treino_em_andamento = True
-            st.session_state.inicio_treino = datetime.now()
-            st.rerun()
+# --- 2. TREINAR AGORA ---
+elif menu == "🏋️ Treinar Agora":
+    query_meus_treinos = text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u")
+    meus_treinos = pd.read_sql(query_meus_treinos, engine, params={"u": st.session_state.user_id})['treino_nome'].tolist()
+    
+    if not meus_treinos:
+        st.warning("Você ainda não tem uma ficha montada.")
     else:
-        duracao_atual = datetime.now() - st.session_state.inicio_treino
-        st.success(f"⏱️ Tempo decorrido: {str(duracao_atual).split('.')[0]}")
-        if st.button("🏁 ENCERRAR TREINO", use_container_width=True):
-            st.session_state.confirmar_fim = True
+        t_sel = st.selectbox("Selecione o Treino:", meus_treinos)
+        
+        # Cronômetro
+        if 'treino_andamento' not in st.session_state: st.session_state.treino_andamento = False
+        
+        if not st.session_state.treino_andamento:
+            if st.button("🚀 INICIAR", use_container_width=True, type="primary"):
+                st.session_state.treino_andamento = True
+                st.session_state.inicio_t = datetime.now()
+                st.rerun()
+        else:
+            if st.button("🏁 FINALIZAR", use_container_width=True):
+                minutos = int((datetime.now() - st.session_state.inicio_t).total_seconds() / 60)
+                with engine.begin() as conn:
+                    conn.execute(text("INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos) VALUES (:u, :t, :d)"),
+                                 {"u": st.session_state.user_id, "t": t_sel, "d": minutos})
+                st.session_state.treino_andamento = False
+                st.success(f"Treino de {minutos} min salvo!")
+                st.balloons(); time.sleep(2); st.rerun()
 
-    # EXIBIÇÃO DOS EXERCÍCIOS
-    query_ex = text("""
-        SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, e.url_imagem, f.tempo_descanso
-        FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
-        WHERE f.usuario_id = :u AND f.treino_nome = :t
-    """)
-    df_ex = pd.read_sql(query_ex, engine, params={"u": st.session_state.user_id, "t": treino_selecionado})
+        # Exercícios
+        query_ex = text("""SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, e.url_imagem, f.tempo_descanso 
+                           FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+                           WHERE f.usuario_id = :u AND f.treino_nome = :t""")
+        df_ex = pd.read_sql(query_ex, engine, params={"u": st.session_state.user_id, "t": t_sel})
+        
+        for idx, row in df_ex.iterrows():
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 2])
+                with c1: st.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150", use_container_width=True)
+                with c2:
+                    st.subheader(row['nome'])
+                    st.write(f"**{row['series']}x{row['repeticoes']}** | Carga: {row['carga_atual']}kg")
+                    if st.session_state.get('treino_andamento'):
+                        if st.button(f"⏱️ Descanso {row['tempo_descanso']}s", key=f"d_{row['id']}"):
+                            p = st.empty()
+                            for t in range(int(row['tempo_descanso']), -1, -1):
+                                p.metric("Descanso", f"{t}s"); time.sleep(1)
+                            p.success("VAI!")
 
-    for idx, row in df_ex.iterrows():
-        with st.container(border=True):
-            c1, c2 = st.columns([1, 2])
-            with c1:
-                img = row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150"
-                st.image(img, use_container_width=True)
-            with c2:
-                st.subheader(row['nome'])
-                st.write(f"**{row['series']} séries x {row['repeticoes']}** | Carga: **{row['carga_atual']}kg**")
-                
-                if st.session_state.treino_em_andamento:
-                    if st.button(f"⏱️ Descanso ({row['tempo_descanso']}s)", key=f"t_{row['id']}"):
-                        placeholder = st.empty()
-                        for t in range(int(row['tempo_descanso']), -1, -1):
-                            placeholder.metric("Descansando...", f"{t}s")
-                            time.sleep(1)
-                        placeholder.success("Próxima série!")
-                        if idx == len(df_ex) - 1:
-                            st.balloons()
-                            st.info("🎉 Treino concluído! Clique em ENCERRAR no topo.")
-
-    # CONFIRMAÇÃO DE ENCERRAMENTO
-    if st.session_state.get('confirmar_fim'):
-        st.warning("### Confirmar encerramento?")
-        cf1, cf2 = st.columns(2)
-        if cf1.button("✅ Sim, Salvar"):
-            duracao_min = int((datetime.now() - st.session_state.inicio_treino).total_seconds() / 60)
+# --- 3. MONTAR TREINO (ADMIN) ---
+elif menu == "📝 Montar Treino":
+    st.header("📝 Prescrever Treino")
+    alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
+    exs = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
+    
+    with st.form("montar"):
+        aluno = st.selectbox("Aluno", alunos['nome'].tolist())
+        t_nome = st.selectbox("Treino", ["Treino A", "Treino B", "Treino C", "Treino D"])
+        exercicio = st.selectbox("Exercício", exs['nome'].tolist())
+        c1, c2, c3 = st.columns(3)
+        s = c1.number_input("Séries", 1, 10, 3)
+        r = c2.text_input("Reps", "12")
+        cg = c3.text_input("Carga (kg)", "10")
+        desc = st.number_input("Descanso (segundos)", 30, 300, 60)
+        if st.form_submit_button("Adicionar"):
+            id_a = alunos[alunos['nome'] == aluno]['id'].values[0]
+            id_e = exs[exs['nome'] == exercicio]['id'].values[0]
             with engine.begin() as conn:
-                conn.execute(text("INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos) VALUES (:u, :t, :d)"),
-                             {"u": st.session_state.user_id, "t": treino_selecionado, "d": duracao_min})
-            st.session_state.treino_em_andamento = False
-            st.session_state.confirmar_fim = False
-            st.success("Treino registrado!")
-            time.sleep(2)
-            st.rerun()
-        if cf2.button("❌ Não, Voltar"):
-            st.session_state.confirmar_fim = False
-            st.rerun()
+                conn.execute(text("INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso) VALUES (:u, :t, :e, :s, :r, :cg, :td)"),
+                             {"u": int(id_a), "t": t_nome, "e": int(id_e), "s": s, "r": r, "cg": cg, "td": desc})
+            st.success("Adicionado!")
+
+# --- 4. BIBLIOTECA (ADMIN) ---
+elif menu == "⚙️ Biblioteca":
+    st.header("⚙️ Biblioteca de Exercícios")
+    with st.form("lib"):
+        nome = st.text_input("Nome")
+        grupo = st.selectbox("Grupo", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen"])
+        url = st.text_input("URL da Imagem/GIF")
+        if st.form_submit_button("Cadastrar"):
+            with engine.begin() as conn:
+                conn.execute(text("INSERT INTO exercicios_biblioteca (nome, grupo_muscular, url_imagem) VALUES (:n, :g, :u)"),
+                             {"n":nome, "g":grupo, "u":url})
+            st.success("Salvo!")
+
+# --- 5. GESTÃO (ADMIN) ---
+elif menu == "🛡️ Gestão de Usuários":
+    st.header("👥 Alunos")
+    with st.form("user"):
+        n = st.text_input("Nome"); em = st.text_input("Email"); us = st.text_input("Username"); se = st.text_input("Senha")
+        if st.form_submit_button("Cadastrar"):
+            us_l = us.lower().strip().replace(" ", ".")
+            with engine.begin() as conn:
+                conn.execute(text("INSERT INTO usuarios (nome, email, username, senha, nivel) VALUES (:n, :em, :u, :s, 'user')"),
+                             {"n":n, "em":em, "u":us_l, "s":se})
+            enviar_email_cadastro(n, em, us_l, se)
+            st.success("Cadastrado e Notificado!")
