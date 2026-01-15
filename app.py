@@ -19,8 +19,33 @@ if st.session_state.logado:
         st.session_state.inicio_treino = None
 
     # --- ÁREA DE TREINO ---
-    if treino_selecionado and treino_selecionado != "Dashboard":
-        st.title(f"💪 {treino_selecionado}")
+    if aba_dashboard:
+    st.title("📈 Minha Evolução")
+    
+    # Busca os logs reais do aluno
+    query_logs = text("""
+        SELECT data_execucao, duracao_minutos, treino_nome 
+        FROM logs_treino 
+        WHERE usuario_id = :u 
+        ORDER BY data_execucao ASC
+    """)
+    df_logs = pd.read_sql(query_logs, engine, params={"u": st.session_state.user_id})
+    
+    if not df_logs.empty:
+        col_graf1, col_graf2 = st.columns(2)
+        
+        with col_graf1:
+            # Gráfico de duração por dia
+            fig1 = px.line(df_logs, x="data_execucao", y="duracao_minutos", 
+                          title="Duração dos Treinos (Minutos)", markers=True)
+            st.plotly_chart(fig1, use_container_width=True)
+            
+        with col_graf2:
+            # Frequência por tipo de treino
+            fig2 = px.pie(df_logs, names="treino_nome", title="Distribuição de Treinos Realizados")
+            st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("Complete o seu primeiro treino para visualizar os gráficos de evolução!")
 
         # BOTÃO INICIAR / STATUS DO TREINO
         if not st.session_state.treino_em_andamento:
@@ -73,17 +98,42 @@ if st.session_state.logado:
 
         # DIÁLOGO DE ENCERRAMENTO (MODAL SIMULADO)
         if 'treino_finalizado' in st.session_state and st.session_state.treino_finalizado:
-            st.markdown("---")
-            st.warning("### Deseja encerrar o treino agora?")
-            col_fim1, col_fim2 = st.columns(2)
-            if col_fim1.button("✅ Sim, Encerrar"):
-                # Aqui você pode salvar o tempo total no banco futuramente
-                st.session_state.treino_em_andamento = False
-                st.session_state.inicio_treino = None
-                st.session_state.treino_finalizado = False
-                st.success("Treino concluído com sucesso! Até a próxima.")
-                time.sleep(2)
-                st.rerun()
-            if col_fim2.button("❌ Não, Continuar"):
-                st.session_state.treino_finalizado = False
-                st.rerun()
+    st.markdown("---")
+    st.warning("### Deseja encerrar o treino agora?")
+    col_fim1, col_fim2 = st.columns(2)
+    
+    if col_fim1.button("✅ Sim, Encerrar"):
+        # 1. Calcula a duração em minutos
+        agora = datetime.now()
+        duracao = agora - st.session_state.inicio_treino
+        minutos_totais = int(duracao.total_seconds() / 60)
+        
+        # 2. Grava no banco de dados
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos, data_execucao)
+                    VALUES (:u, :t, :d, :dt)
+                """), {
+                    "u": st.session_state.user_id,
+                    "t": treino_selecionado,
+                    "d": minutos_totais,
+                    "dt": agora
+                })
+            
+            # 3. Limpa o cronômetro e avisa o usuário
+            st.session_state.treino_em_andamento = False
+            st.session_state.inicio_treino = None
+            st.session_state.treino_finalizado = False
+            
+            st.success(f"🏆 Treino de {minutos_totais} min registrado com sucesso!")
+            st.balloons()
+            time.sleep(3)
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Erro ao salvar log: {e}")
+
+    if col_fim2.button("❌ Não, Continuar"):
+        st.session_state.treino_finalizado = False
+        st.rerun()
