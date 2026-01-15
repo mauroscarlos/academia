@@ -100,12 +100,39 @@ elif menu == "📝 Montar Treino":
     id_al = int(alunos[alunos['nome'] == al_sel]['id'].values[0])
     tr_sel = c_tr.selectbox("Ficha:", ["Treino A", "Treino B", "Treino C", "Treino D", "Treino E"])
 
-    # --- NOVO: SELETOR DE GRUPOS MUSCULARES ---
-    grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio"]
-    musculos_foco = st.multiselect("Músculos foco deste treino:", grupos_disponiveis, placeholder="Selecione os grupos...")
+    # --- NOVO: LÓGICA DE GRUPOS DINÂMICOS ---
+    st.subheader("🎯 Grupos Musculares da Ficha")
     
-    # Criamos um texto amigável (ex: "Peito, Tríceps")
-    foco_texto = ", ".join(musculos_foco) if musculos_foco else "Geral"
+    # Inicializa a lista de grupos no estado da sessão se não existir
+    if 'lista_grupos_ficha' not in st.session_state:
+        st.session_state.lista_grupos_ficha = ["Peito"] # Começa com um padrão
+
+    grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio", "Glúteos", "Antebraço"]
+
+    # Renderiza os seletores baseados no que está na lista
+    col_g1, col_g2 = st.columns([3, 1])
+    
+    for i, grupo_atual in enumerate(st.session_state.lista_grupos_ficha):
+        st.session_state.lista_grupos_ficha[i] = st.selectbox(
+            f"Grupo {i+1}", 
+            grupos_disponiveis, 
+            index=grupos_disponiveis.index(grupo_atual) if grupo_atual in grupos_disponiveis else 0,
+            key=f"grupo_sel_{i}"
+        )
+
+    # Botões para adicionar ou remover campos
+    c_btn1, c_btn2, _ = st.columns([1, 1, 2])
+    if c_btn1.button("➕ Adicionar Grupo"):
+        st.session_state.lista_grupos_ficha.append("Peito")
+        st.rerun()
+    
+    if c_btn2.button("🗑️ Remover Último") and len(st.session_state.lista_grupos_ficha) > 1:
+        st.session_state.lista_grupos_ficha.pop()
+        st.rerun()
+
+    # Cria o texto final que será exibido (ex: "Peito + Tríceps")
+    foco_texto = " + ".join(list(set(st.session_state.lista_grupos_ficha))) # 'set' remove duplicados acidentais
+    st.info(f"**Foco do {tr_sel}:** {foco_texto}")
 
     lista_bib = bib['nome'].tolist()
     if 'form_token' not in st.session_state: st.session_state.form_token = 0
