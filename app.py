@@ -87,23 +87,31 @@ if menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t_cnt}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO (REVISADO E SEM ERROS) ---
+# --- 3. MONTAR TREINO (COM GRUPOS MUSCULARES) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever Treino")
     st.cache_data.clear()
+    
     alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     bib = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
     c_al, c_tr = st.columns(2)
     al_sel = c_al.selectbox("Aluno:", alunos['nome'].tolist())
     id_al = int(alunos[alunos['nome'] == al_sel]['id'].values[0])
-    tr_sel = c_tr.selectbox("Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
+    tr_sel = c_tr.selectbox("Ficha:", ["Treino A", "Treino B", "Treino C", "Treino D", "Treino E"])
+
+    # --- NOVO: SELETOR DE GRUPOS MUSCULARES ---
+    grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio"]
+    musculos_foco = st.multiselect("Músculos foco deste treino:", grupos_disponiveis, placeholder="Selecione os grupos...")
+    
+    # Criamos um texto amigável (ex: "Peito, Tríceps")
+    foco_texto = ", ".join(musculos_foco) if musculos_foco else "Geral"
 
     lista_bib = bib['nome'].tolist()
     if 'form_token' not in st.session_state: st.session_state.form_token = 0
 
     with st.container(border=True):
-        st.subheader("Configurar Exercício(s)")
+        st.subheader(f"Adicionar ao {tr_sel} ({foco_texto})")
         ex1 = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex1_{st.session_state.form_token}")
         ex2_check = st.selectbox("2. Combinar com outro (Bi-set)?", ["Não", "Sim"], key=f"ex2_check_{st.session_state.form_token}")
         
@@ -112,36 +120,33 @@ elif menu == "📝 Montar Treino":
             ex2 = st.selectbox("Selecione o segundo exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
         
         st.divider()
-        c1, c2, c3 = st.columns(3)
-        # VARIAVEL 'tipo_meta_v' PADRONIZADA AQUI
-        tipo_meta_v = c1.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-        series = c2.number_input("Séries", 1, 10, 3, key=f"ser_{st.session_state.form_token}")
-        carga = c3.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
+        col_m, col_s, col_c = st.columns(3)
+        tipo_meta_v = col_m.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+        series = col_s.number_input("Séries", 1, 12, 3, key=f"ser_{st.session_state.form_token}")
+        carga = col_c.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
         
-        r1_col, r2_col = st.columns(2)
-        reps1 = r1_col.text_input(f"Reps para: {ex1}", "12", key=f"r1_{st.session_state.form_token}")
-        
+        r1_c, r2_c = st.columns(2)
+        reps1 = r1_c.text_input(f"Reps: {ex1}", "12", key=f"r1_{st.session_state.form_token}")
         reps2 = "12"
         if ex2_check == "Sim":
-            reps2 = r2_col.text_input(f"Reps para: {ex2}", "10", key=f"r2_{st.session_state.form_token}")
+            reps2 = r2_c.text_input(f"Reps: {ex2}", "10", key=f"r2_{st.session_state.form_token}")
         
-        descanso = st.number_input("Descanso após a série (s)", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+        descanso = st.number_input("Descanso (s)", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
         
-        if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
+        if st.button("✅ SALVAR EXERCÍCIO", use_container_width=True, type="primary"):
             id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
-            exercicio_biset = ex2 if ex2_check == "Sim" else None
+            # Aqui salvamos o nome do treino incluindo o foco (ex: "Treino A - Peito")
+            # Mas para não quebrar a lógica, vamos manter o nome puro e exibir o foco via código
             
             with engine.begin() as conn:
-                # Salva o Primeiro
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                 """), {
                     "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, 
-                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": exercicio_biset
+                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": ex2 if ex2_check == "Sim" else None
                 })
                 
-                # Se for Bi-set, salva o Segundo
                 if ex2_check == "Sim":
                     id_ex2 = int(bib[bib['nome'] == ex2]['id'].values[0])
                     conn.execute(text("""
@@ -153,9 +158,21 @@ elif menu == "📝 Montar Treino":
                     })
             
             st.session_state.form_token += 1
-            st.success("Salvo com sucesso!")
-            time.sleep(1)
-            st.rerun()
+            st.success(f"Adicionado ao {tr_sel}!")
+            time.sleep(1); st.rerun()
+
+    st.divider()
+    df_ficha = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
+    if not df_ficha.empty:
+        st.subheader(f"📋 Resumo do {tr_sel}")
+        for _, r in df_ficha.iterrows():
+            c1, c2 = st.columns([4, 1])
+            txt = f"🔹 **{r['nome']}** - {r['repeticoes']} reps"
+            if r['exercicio_combinado_id']: txt += f" (Bi-set com {r['exercicio_combinado_id']})"
+            c1.write(txt)
+            if c2.button("🗑️", key=f"del_{r['id']}"):
+                with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
+                st.rerun()
 
 # --- 4. BIBLIOTECA / 5. GESTÃO (Estrutura básica para manter o app rodando) ---
 elif menu == "⚙️ Biblioteca":
