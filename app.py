@@ -21,15 +21,41 @@ engine = get_engine()
 
 # --- FUNÇÃO DE E-MAIL ---
 def enviar_email_cadastro(nome, email_destino, username, senha):
-    corpo = f"<html><body><h3>Olá, {nome}! 💪</h3><p>Seu acesso ao <b>SGF Treino</b> foi criado.</p><p>Usuário: {username}<br>Senha: {senha}</p></body></html>"
+    # --- TROQUE PELO LINK DO SEU APP NO STREAMLIT CLOUD ---
+    url_sistema = "https://seu-app-de-treino.streamlit.app/" 
+    
+    corpo = f"""
+    <html>
+        <body style="font-family: sans-serif; line-height: 1.6;">
+            <h3 style="color: #ff4b4b;">Olá, {nome}! 💪</h3>
+            <p>Seu acesso ao <b>SGF Treino Elite</b> foi criado com sucesso.</p>
+            <p>Agora você pode acompanhar suas fichas, marcar tempos de descanso e ver sua evolução.</p>
+            <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px; border: 1px solid #ddd;">
+                <b>Seus dados de login:</b><br>
+                🔗 <b>Link de Acesso:</b> <a href="{url_sistema}">{url_sistema}</a><br>
+                👤 <b>Usuário:</b> <code>{username}</code><br>
+                🔑 <b>Senha:</b> <code>{senha}</code>
+            </div>
+            <p>Bons treinos!</p>
+            <hr style="border: 0; border-top: 1px solid #eee;">
+            <small>Este é um e-mail automático, por favor não responda.</small>
+        </body>
+    </html>
+    """
     try:
-        msg = MIMEMultipart(); msg['From'] = st.secrets["email"]["usuario"]; msg['To'] = email_destino; msg['Subject'] = "🏋️ Acesso SGF Treino"
+        msg = MIMEMultipart()
+        msg['From'] = st.secrets["email"]["usuario"]
+        msg['To'] = email_destino
+        msg['Subject'] = "🏋️ Seu Acesso ao SGF Treino chegou!"
         msg.attach(MIMEText(corpo, 'html'))
+        
         with smtplib.SMTP_SSL(st.secrets["email"]["smtp_server"], st.secrets["email"]["smtp_port"]) as server:
             server.login(st.secrets["email"]["usuario"], st.secrets["email"]["senha"])
             server.sendmail(msg['From'], msg['To'], msg.as_string())
         return True
-    except: return False
+    except Exception as e:
+        st.error(f"Erro ao enviar e-mail: {e}")
+        return False
 
 # --- LOGIN ---
 if 'logado' not in st.session_state: st.session_state.logado = False
