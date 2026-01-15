@@ -162,7 +162,7 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO ---
+# --- 3. MONTAR TREINO
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever e Editar Treino")
     st.cache_data.clear()
@@ -174,48 +174,61 @@ elif menu == "📝 Montar Treino":
     id_aluno_atual = int(alunos_df[alunos_df['nome'] == aluno_escolhido]['id'].values[0])
     nome_do_treino = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
 
-    lista_exercicios = biblioteca_df['nome'].tolist()
-    lista_combinar = ["Não"] + lista_exercicios
+    # Busca exercícios JÁ salvos na ficha para poder combinar
+    with engine.connect() as conn:
+        frescos = pd.read_sql(text("SELECT f.id, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t"), 
+                             conn, params={"u": id_aluno_atual, "t": nome_do_treino})
+    
+    lista_para_combinar = ["Não"] + frescos['nome'].tolist()
 
     if 'form_token' not in st.session_state: st.session_state.form_token = 0
 
     with st.container(border=True):
-        st.subheader(f"Adicionar ao {nome_do_treino}")
-        ex_escolhido = st.selectbox("1. Exercício Principal:", lista_exercicios, key=f"ex_{st.session_state.form_token}")
-        combinar_com = st.selectbox("2. Combinar com (Bi-set):", lista_combinar, key=f"comb_{st.session_state.form_token}")
+        st.subheader(f"Adicionar Exercício")
+        ex_escolhido = st.selectbox("1. Exercício da Biblioteca:", biblioteca_df['nome'].tolist(), key=f"ex_{st.session_state.form_token}")
+        
+        # Aqui você escolhe se este exercício que está criando agora se vincula a um que já está na lista
+        combinar_com = st.selectbox("2. Executar imediatamente após (Bi-set com):", lista_para_combinar, key=f"comb_{st.session_state.form_token}")
+        
         c1, c2, c3 = st.columns(3)
         tipo_m = c1.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tipo_{st.session_state.form_token}")
-        meta_v = c2.text_input("Meta", "12", key=f"meta_{st.session_state.form_token}")
-        ser_v = c3.number_input("Séries", 1, 10, 3, key=f"ser_{st.session_state.form_token}")
-        cg_v = st.text_input("Carga (kg)", "10", key=f"cg_{st.session_state.form_token}")
-        desc_v = st.number_input("Descanso (s)", 0, 300, 60, key=f"desc_{st.session_state.form_token}")
-        obs_v = st.text_area("Observações", key=f"obs_{st.session_state.form_token}")
+        meta_v = st.text_input("Meta/Reps (ex: 12 ou 10-8-6)", "12", key=f"meta_{st.session_state.form_token}")
+        ser_v = st.number_input("Séries", 1, 10, 3, key=f"ser_{st.session_state.form_token}")
         
-        if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
+        col_cg, col_ds = st.columns(2)
+        cg_v = col_cg.text_input("Carga (kg)", "10", key=f"cg_{st.session_state.form_token}")
+        desc_v = col_ds.number_input("Descanso (s)", 0, 300, 60, key=f"desc_{st.session_state.form_token}")
+        
+        if st.button("✅ ADICIONAR EXERCÍCIO", use_container_width=True, type="primary"):
             id_modelo = int(biblioteca_df[biblioteca_df['nome'] == ex_escolhido]['id'].values[0])
+            
             with engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
-                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
-                """), {"u": id_aluno_atual, "t": nome_do_treino, "e": id_modelo, "s": ser_v, "r": meta_v, "cg": cg_v, "td": desc_v, "tm": tipo_m, "ob": obs_v, "cb": combinar_com if combinar_com != "Não" else None})
+                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, '', :cb)
+                """), {
+                    "u": id_aluno_atual, "t": nome_do_treino, "e": id_modelo, 
+                    "s": ser_v, "r": meta_v, "cg": cg_v, "td": desc_v, 
+                    "tm": tipo_m, "cb": combinar_com if combinar_com != "Não" else None
+                })
             st.session_state.form_token += 1
-            st.success("Adicionado!"); time.sleep(0.5); st.rerun()
+            st.rerun()
 
+    # --- LISTA DE VISUALIZAÇÃO ---
     st.divider()
-    with engine.connect() as conn:
-        df_atuais = pd.read_sql(text("SELECT f.id, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), conn, params={"u": id_aluno_atual, "t": nome_do_treino})
-
-    st.subheader(f"📋 Resumo: {nome_do_treino}")
-    if not df_atuais.empty:
-        for _, r in df_atuais.iterrows():
+    st.subheader(f"📋 Exercícios na Ficha")
+    if not frescos.empty:
+        # Busca detalhes completos para exibir as reps diferentes
+        detalhes = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t"), engine, params={"u": id_aluno_atual, "t": nome_do_treino})
+        for _, r in detalhes.iterrows():
             c1, c2 = st.columns([4, 1])
-            c1.write(f"🔹 **{r['nome']}**")
+            texto = f"🔹 **{r['nome']}** - {r['repeticoes']} reps"
+            if r['exercicio_combinado_id']:
+                texto += f" *(Combinado com {r['exercicio_combinado_id']})*"
+            c1.write(texto)
             if c2.button("🗑️", key=f"del_{r['id']}"):
                 with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
                 st.rerun()
-        if st.button("🔥 EXCLUIR TREINO COMPLETO"):
-            with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE usuario_id = :u AND treino_nome = :t"), {"u": id_aluno_atual, "t": nome_do_treino})
-            st.rerun()
 
 # --- 4. BIBLIOTECA ---
 elif menu == "⚙️ Biblioteca":
