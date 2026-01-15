@@ -55,28 +55,34 @@ if menu == "🏋️ Treinar Agora":
 
         # --- NOVO: BOTÃO DE EXPORTAR PARA O ALUNO ---
         # Pegamos os dados atuais da tela para gerar o arquivo
-        df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
+       df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
-            with st.expander("📥 Baixar Ficha / Acessar Offline"):
-                # Texto para copiar (WhatsApp)
-                texto_offline = f"🏋️ *MEU TREINO: {t_sel}*\n"
+            with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
+                # Visual formatado para leitura rápida na tela
+                st.markdown(f"### 📋 Resumo do Treino: {t_sel}")
+                
+                # Criando uma tabela visual limpa para o aluno
+                tabela_html = "| Exercício | Séries x Reps | Descanso |\n| :--- | :--- | :--- |\n"
                 for _, r in df_ex.iterrows():
-                    texto_offline += f"\n🔹 *{r['nome']}*\n   {r['series']}x {r['repeticoes']} | Descanso: {r['tempo_descanso']}s"
+                    tabela_html += f"| **{r['nome']}** | {r['series']}x {r['repeticoes']} | {r['tempo_descanso']}s |\n"
                 
-                st.text_area("Copie para o seu WhatsApp ou Notas:", texto_offline, height=150)
+                st.markdown(tabela_html)
                 
-                # Botão para baixar CSV (Excel)
-                csv_data = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso', 'carga_atual']].to_csv(index=False).encode('utf-8')
+                st.divider()
+                
+                # Preparando o CSV com correção de acentuação (UTF-8 com BOM)
+                # O 'utf-8-sig' resolve o problema dos acentos no Excel
+                csv_corrigido = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso', 'carga_atual']].to_csv(index=False, encoding='utf-8-sig', sep=';')
+                
                 st.download_button(
-                    label="📊 Baixar Planilha (CSV)",
-                    data=csv_data,
+                    label="📥 BAIXAR PLANILHA PARA EXCEL (Com Acentos)",
+                    data=csv_corrigido,
                     file_name=f'Treino_{t_sel}.csv',
                     mime='text/csv',
                     use_container_width=True
                 )
-        
-        st.divider()
+                st.caption("💡 Dica: O arquivo baixado já está configurado para abrir corretamente no Excel.")
         # --- FIM DA EXPORTAÇÃO ---
 
         if 'treino_andamento' not in st.session_state: st.session_state.treino_andamento = False
