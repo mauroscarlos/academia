@@ -42,80 +42,78 @@ with st.sidebar:
     # Adicionamos a opção "⚙️ Treinos" no menu principal
     menu = st.radio("Navegação", ["🏋️ Treinar Agora", "⚙️ Treinos", "📊 Relatórios", "🚪 Sair"])
 
-# --- ÁREA DE TREINOS (ADMIN) ---
+# --- ⚙️ SEÇÃO DE TREINOS (ADMIN) ---
 if menu == "⚙️ Treinos":
     st.title("⚙️ Gestão de Treinos")
     
-    # SUBMENU que aparece apenas quando "Treinos" está selecionado
-    submenu = st.segmented_control("Ação:", ["Montar Novo Treino", "Editar Treinos Existentes"], default="Montar Novo Treino")
-    st.divider()
+    # Criando as abas para não embolar a tela
+    tab_montar, tab_editar = st.tabs(["🆕 Montar Novo Treino", "✏️ Editar/Reordenar Treinos"])
 
-    if submenu == "Montar Novo Treino":
-        st.subheader("🆕 Criar Nova Ficha")
-        # --- AQUI VOCÊ MANTÉM O SEU CÓDIGO ORIGINAL DE CADASTRO ---
-        # (Aquele com a seleção de aluno, exercícios, bi-set, etc.)
-        st.info("Área para selecionar aluno e adicionar novos exercícios.")
+    with tab_montar:
+        st.subheader("Cadastrar nova ficha para aluno")
+        # COLOQUE AQUI o seu código que já funcionava de inserir treinos
+        st.info("Aqui você mantém o seu formulário original de cadastro.")
 
-    elif submenu == "Editar Treinos Existentes":
-        st.subheader("✏️ Gerenciar e Reordenar")
+    with tab_editar:
+        st.subheader("Gerenciar exercícios já criados")
         
-        # 1. Seleção do Aluno
-        df_alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE tipo = 'aluno'", engine)
-        if df_alunos.empty:
-            st.warning("Nenhum aluno cadastrado.")
-        else:
-            aluno_sel = st.selectbox("Selecione o Aluno:", df_alunos['nome'].tolist())
-            aluno_id = df_alunos[df_alunos['nome'] == aluno_sel]['id'].values[0]
-
-            # 2. Seleção do Treino desse aluno
-            df_t_admin = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": aluno_id})
+        # 1. Seleção do Aluno (Corrigindo o erro do print)
+        try:
+            df_alunos = pd.read_sql(text("SELECT id, nome FROM usuarios WHERE tipo = 'aluno'"), engine)
             
-            if df_t_admin.empty:
-                st.info("Este aluno ainda não tem fichas.")
+            if df_alunos.empty:
+                st.warning("Nenhum aluno cadastrado no sistema.")
             else:
-                t_edit_sel = st.selectbox("Selecione o Treino para editar:", df_t_admin['treino_nome'].tolist())
+                aluno_sel = st.selectbox("Selecione o Aluno:", df_alunos['nome'].tolist(), key="sel_aluno_edit")
+                aluno_id = df_alunos[df_alunos['nome'] == aluno_sel]['id'].values[0]
 
-                # 3. Carregar exercícios para edição e reordenação
-                query_edit = text("""
-                    SELECT f.id, e.nome as exercicio_nome, f.series, f.repeticoes, f.carga_atual, f.ordem
-                    FROM fichas_treino f
-                    JOIN exercicios_biblioteca e ON f.exercicio_id = e.id
-                    WHERE f.usuario_id = :u AND f.treino_nome = :t
-                    ORDER BY f.ordem ASC, f.id ASC
-                """)
-                df_edit = pd.read_sql(query_edit, engine, params={"u": aluno_id, "t": t_edit_sel})
+                # 2. Seleção do Treino
+                df_treinos_existentes = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": int(aluno_id)})
+                
+                if df_treinos_existentes.empty:
+                    st.info("Este aluno ainda não possui fichas de treino.")
+                else:
+                    t_nome_edit = st.selectbox("Selecione o Treino:", df_treinos_existentes['treino_nome'].tolist())
 
-                # FORMULÁRIO DE EDIÇÃO EM MASSA
-                with st.form("form_gestao_treino"):
-                    lista_updates = []
-                    
-                    for _, row in df_edit.iterrows():
-                        with st.container(border=True):
-                            c1, c2, c3, c4, c5 = st.columns([3, 1, 2, 1, 1])
-                            with c1: st.markdown(f"**{row['exercicio_nome']}**")
-                            with c2: ordem = st.number_input("Ordem", value=int(row['ordem']), key=f"ord_{row['id']}")
-                            with c3: reps = st.text_input("Reps", value=row['repeticoes'], key=f"rep_{row['id']}")
-                            with c4: carga = st.number_input("Kg", value=int(row['carga_atual']), key=f"kg_{row['id']}")
-                            with c5: excluir = st.checkbox("🗑️", key=f"del_{row['id']}")
-                            
-                            lista_updates.append({
-                                "id": row['id'], "ordem": ordem, 
-                                "reps": reps, "carga": carga, "excluir": excluir
-                            })
-                    
-                    if st.form_submit_button("💾 SALVAR ALTERAÇÕES NO TREINO", type="primary", use_container_width=True):
-                        with engine.begin() as conn:
-                            for item in lista_updates:
-                                if item['excluir']:
-                                    conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": item['id']})
-                                else:
-                                    conn.execute(text("""
-                                        UPDATE fichas_treino 
-                                        SET ordem = :o, repeticoes = :r, carga_atual = :c 
-                                        WHERE id = :id
-                                    """), {"o": item['ordem'], "r": item['reps'], "c": item['carga'], "id": item['id']})
-                        st.success("Treino atualizado!")
-                        st.rerun()
+                    # 3. Busca exercícios (respeitando a nova coluna 'ordem')
+                    query_edit = text("""
+                        SELECT f.id, e.nome as exercicio_nome, f.series, f.repeticoes, f.carga_atual, f.ordem
+                        FROM fichas_treino f
+                        JOIN exercicios_biblioteca e ON f.exercicio_id = e.id
+                        WHERE f.usuario_id = :u AND f.treino_nome = :t
+                        ORDER BY f.ordem ASC, f.id ASC
+                    """)
+                    df_edit = pd.read_sql(query_edit, engine, params={"u": int(aluno_id), "t": t_nome_edit})
+
+                    # Form para salvar tudo de uma vez
+                    with st.form("form_edicao_lote"):
+                        lista_final = []
+                        for _, row in df_edit.iterrows():
+                            with st.container(border=True):
+                                col1, col2, col3, col4, col5 = st.columns([3, 1, 2, 1, 1])
+                                with col1: st.write(f"**{row['exercicio_nome']}**")
+                                with col2: n_ordem = st.number_input("Ordem", value=int(row['ordem']), key=f"o_{row['id']}")
+                                with col3: n_reps = st.text_input("Reps", value=row['repeticoes'], key=f"r_{row['id']}")
+                                with col4: n_carga = st.number_input("Kg", value=int(row['carga_atual']), key=f"k_{row['id']}")
+                                with col5: deletar = st.checkbox("🗑️", key=f"d_{row['id']}")
+                                
+                                lista_final.append({"id": row['id'], "ord": n_ordem, "rep": n_reps, "kg": n_carga, "del": deletar})
+                        
+                        if st.form_submit_button("💾 SALVAR ALTERAÇÕES", type="primary", use_container_width=True):
+                            with engine.begin() as conn:
+                                for item in lista_final:
+                                    if item['del']:
+                                        conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": item['id']})
+                                    else:
+                                        conn.execute(text("""
+                                            UPDATE fichas_treino 
+                                            SET ordem = :o, repeticoes = :r, carga_atual = :c 
+                                            WHERE id = :id
+                                        """), {"o": item['ord'], "r": item['rep'], "c": item['kg'], "id": item['id']})
+                            st.success("Treino atualizado com sucesso!")
+                            st.rerun()
+        except Exception as e:
+            st.error(f"Erro ao carregar dados: {e}")
 
 # --- 2. TREINAR AGORA (ALUNO) ---
 if menu == "🏋️ Treinar Agora":
