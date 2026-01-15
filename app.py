@@ -54,42 +54,47 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO BLINDAGEM DE AÇO (FOCO ACENTOS BRASIL) ---
+        # --- EXPORTAÇÃO DEFINITIVA (HTML FORMAT) ---
         df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
             with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
                 st.markdown(f"### 📋 Resumo: {t_sel}")
                 
-                # Tabela no app (Aqui sempre fica bonito)
-                tabela_html = "| Exercício | Séries | Reps | Descanso |\n| :--- | :--- | :--- | :--- |\n"
-                for _, r in df_ex.iterrows():
-                    tabela_html += f"| **{r['nome']}** | {r['series']} | {r['repeticoes']} | {r['tempo_descanso']}s |\n"
-                st.markdown(tabela_html)
-                
-                st.divider()
-
-                # 1. Preparando os dados
+                # 1. Preparando os dados limpos
                 df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
-                
-                # Proteção contra 2006 repetições (Data)
-                df_export['repeticoes'] = df_export['repeticoes'].apply(lambda x: f"'{x}")
-                
-                # Nomes das colunas sem acento para garantir que a 1ª linha não quebre
-                df_export.columns = ['Exercicio', 'Series', 'Reps', 'Descanso']
+                df_export.columns = ['Exercício', 'Séries', 'Reps', 'Descanso']
 
-                # 2. A MUDANÇA REAL: ISO-8859-1 (Latin-1)
-                # Esse é o formato 'raiz' do Windows Brasil.
-                # Se o Excel não ler isso, a gente chama o padre!
-                csv_excel = df_export.to_csv(index=False, sep=';', encoding='iso-8859-1')
+                # 2. Criando um HTML que o Excel entende como Planilha
+                # O segredo aqui é o 'mso-number-format:"\@"' que trava como TEXTO no Excel
+                html_style = """
+                <style>
+                    table { border-collapse: collapse; font-family: sans-serif; }
+                    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+                    th { background-color: #eee; }
+                    .reps-text { mso-number-format:"\\@"; }
+                </style>
+                """
+                
+                html_body = f"<h2>Treino: {t_sel}</h2>"
+                html_body += "<table><thead><tr><th>Exercício</th><th>Séries</th><th>Reps</th><th>Descanso</th></tr></thead><tbody>"
+                
+                for _, r in df_export.iterrows():
+                    html_body += f"<tr><td>{r['Exercício']}</td><td>{r['Séries']}</td><td class='reps-text'>{r['Reps']}</td><td>{r['Descanso']}s</td></tr>"
+                
+                html_body += "</tbody></table>"
+                
+                # Juntamos tudo com o cabeçalho de acentuação UTF-8 para o Excel
+                html_final = f"<html><head><meta charset='utf-8'></head><body>{html_style}{html_body}</body></html>"
 
                 st.download_button(
-                    label="📥 BAIXAR PARA EXCEL (Blindagem de Aço)",
-                    data=csv_excel,
-                    file_name=f'Treino_{t_sel}.csv',
-                    mime='text/csv',
+                    label="📥 BAIXAR FICHA PARA EXCEL (Formato Garantido)",
+                    data=html_final,
+                    file_name=f'Treino_{t_sel}.xls', # Salvamos como .xls para o Excel assumir o controle
+                    mime='application/vnd.ms-excel',
                     use_container_width=True
                 )
+                st.info("💡 Ao abrir, o Excel pode dar um aviso de formato. Pode clicar em 'Sim', ele abrirá perfeito com acentos e colunas!")
 
         st.divider()
 
