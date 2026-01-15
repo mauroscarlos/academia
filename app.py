@@ -165,24 +165,24 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO (RESET TOTAL DE CACHE) ---
+# --- 3. MONTAR TREINO (A VENCENDO PELO CANSAÇO) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever e Editar Treino")
     
-    # 1. Limpando caches de consulta do Streamlit para garantir dados novos
-    st.cache_data.clear() 
+    # 1. Limpeza de Cache Total
+    st.cache_data.clear()
 
-    # 2. Carregamento básico
+    # 2. Carregamento de Alunos e Biblioteca
     alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     exs_biblioteca = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
-    # Seletores fora do form (Mudança aqui: usamos chaves únicas para forçar refresh)
+    # Seletores fora do form
     col_al, col_tr = st.columns(2)
     aluno_nome = col_al.selectbox("Aluno:", alunos['nome'].tolist(), key="main_aluno_sel")
     id_aluno = int(alunos[alunos['nome'] == aluno_nome]['id'].values[0])
     treino_nome = col_tr.selectbox("Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"], key="main_treino_sel")
 
-    # 3. BUSCA SEM CACHE (Usando conexão direta)
+    # 3. BUSCA SEM FILTROS (Direto do Banco)
     with engine.connect() as connection:
         sql = text("""
             SELECT f.id, e.nome 
@@ -191,92 +191,86 @@ elif menu == "📝 Montar Treino":
             WHERE f.usuario_id = :u AND f.treino_nome = :t
             ORDER BY f.id ASC
         """)
-        # AQUI: Forçamos o Pandas a ler sem guardar em memória
         df_atuais = pd.read_sql(sql, connection, params={"u": id_aluno, "t": treino_nome})
 
-    # 4. O FORMULÁRIO (Com chave que muda a cada clique)
+    # --- ÁREA DE DIAGNÓSTICO (Para sabermos o que está acontecendo) ---
+    with st.expander("🔍 Diagnóstico do Sistema (Abra se não aparecer o exercício)"):
+        st.write(f"ID Aluno Selecionado: {id_aluno}")
+        st.write(f"Treino Selecionado: {treino_nome}")
+        st.write("Exercícios encontrados no Banco para este Aluno/Treino:")
+        st.write(df_atuais)
+        if not df_atuais.empty:
+            st.write(f"Nomes disponíveis para o seletor: {df_atuais['nome'].tolist()}")
+
+    # 4. FORMULÁRIO COM CHAVE DINÂMICA
     if 'reset_trigger' not in st.session_state: st.session_state.reset_trigger = 0
 
-    with st.form(key=f"form_final_{id_aluno}_{treino_nome}_{st.session_state.reset_trigger}"):
-        st.subheader(f"Adicionar exercício")
+    with st.form(key=f"form_final_v5_{id_aluno}_{treino_nome}_{st.session_state.reset_trigger}"):
+        st.subheader("Adicionar Exercício")
         
-        ex_escolhido = st.selectbox("Exercício (da Biblioteca):", exs_biblioteca['nome'].tolist())
+        ex_escolhido = st.selectbox("1. Exercício (da Biblioteca):", exs_biblioteca['nome'].tolist())
         
-        # LISTA DE COMBINAÇÃO: Pegando o que acabamos de ler do banco
-        lista_opcoes = ["Não"] + df_atuais['nome'].tolist()
-        combinar_com = st.selectbox("Combinar com (Bi-set):", lista_opcoes)
+        # AQUI ESTÁ A MUDANÇA: Criamos as opções forçando strings limpas
+        opcoes_comb = ["Não"]
+        if not df_atuais.empty:
+            # Pegamos os nomes e removemos qualquer espaço em branco acidental
+            nomes_limpos = df_atuais['nome'].astype(str).str.strip().tolist()
+            opcoes_comb.extend(nomes_limpos)
+            
+        combinar_com = st.selectbox("2. Combinar com (Bi-set):", opcoes_comb)
         
         c1, c2, c3 = st.columns(3)
-        tipo = c1.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"])
-        rep = c2.text_input("Meta", "12")
+        tipo = c1.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"])
+        rep = c2.text_input("Meta (ex: 12-10-8)", "12")
         ser = c3.number_input("Séries", 1, 10, 3)
         
-        carga = st.text_input("Carga (kg)", "10")
-        descanso = st.number_input("Descanso (s)", 0, 300, 60)
+        c_cg, c_ds = st.columns(2)
+        carga = c_cg.text_input("Carga (kg)", "10")
+        descanso = c_ds.number_input("Descanso (s)", 0, 300, 60)
+        
         obs = st.text_area("Observações")
         
-        if st.form_submit_button("✅ GRAVAR E ATUALIZAR LISTA"):
-            id_ex_mod = int(exs_biblioteca[exs_biblioteca['nome'] == ex_escolhido]['id'].values[0])
-            id_link = None
-            if combinar_com != "Não":
-                # Pegamos o ID do exercício que já está na ficha do aluno
-                id_link = int(df_atuais[df_atuais['nome'] == combinar_com]['id'].iloc[0])
-            
-            with engine.begin() as conn:
-                conn.execute(text("""
-                    INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
-                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
-                """), {"u": id_aluno, "t": treino_nome, "e": id_ex_mod, "s": ser, "r": rep, "cg": carga, "td": descanso, "tm": tipo, "ob": obs, "cb": id_link})
-            
-            # ATUALIZAÇÃO FORÇADA
-            st.session_state.reset_trigger += 1
-            st.success("Gravado! Atualizando listas...")
-            time.sleep(0.5)
-            st.rerun()
+        if st.form_submit_button("✅ GRAVAR EXERCÍCIO"):
+            if not ex_escolhido:
+                st.error("Selecione um exercício!")
+            else:
+                id_ex_mod = int(exs_biblioteca[exs_biblioteca['nome'] == ex_escolhido]['id'].values[0])
+                id_link = None
+                
+                # Só tenta linkar se não for "Não"
+                if combinar_com != "Não":
+                    # Procuramos o ID que corresponde ao nome selecionado (removendo espaços para comparar)
+                    try:
+                        temp_df = df_atuais.copy()
+                        temp_df['nome_clean'] = temp_df['nome'].astype(str).str.strip()
+                        id_link = int(temp_df[temp_df['nome_clean'] == combinar_com.strip()]['id'].iloc[0])
+                    except:
+                        id_link = None
 
-    # 5. VISUALIZAÇÃO DE SEGURANÇA (Se não aparecer aqui, não gravou no banco)
-    st.divider()
-    st.subheader("📋 Exercícios já salvos (Confira aqui)")
-    if not df_atuais.empty:
-        # Usando st.write formatado para facilitar a leitura
-        for _, r in df_atuais.iterrows():
-            col_1, col_2 = st.columns([4, 1])
-            col_1.markdown(f"✅ **{r['nome']}** (ID na Ficha: {r['id']})")
-            if col_2.button("🗑️", key=f"exc_{r['id']}"):
                 with engine.begin() as conn:
-                    conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
+                    conn.execute(text("""
+                        INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
+                        VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
+                    """), {"u": id_aluno, "t": treino_nome, "e": id_ex_mod, "s": ser, "r": rep, "cg": carga, "td": descanso, "tm": tipo, "ob": obs, "cb": id_link})
+                
+                st.session_state.reset_trigger += 1
+                st.success("Gravado com sucesso!")
+                time.sleep(0.5)
                 st.rerun()
-    else:
-        st.info("Ficha vazia para este treino.")
 
-    # 4. LISTA DE CONFERÊNCIA E EXCLUSÃO (Para garantir que você veja o que está no banco)
+    # 5. TABELA DE EXCLUSÃO (RESUMO)
     st.divider()
     st.subheader("📋 Exercícios já salvos nesta ficha")
     if not df_atuais.empty:
-        # Usamos um loop para mostrar um por um com botão de excluir ao lado
         for _, r in df_atuais.iterrows():
-            col_ex, col_btn = st.columns([4, 1])
-            col_ex.write(f"🔹 **{r['nome']}**")
-            if col_btn.button("🗑️ Remover", key=f"btn_del_{r['id']}"):
+            col_1, col_2 = st.columns([4, 1])
+            col_1.markdown(f"**{r['nome']}**")
+            if col_2.button("🗑️", key=f"exc_v5_{r['id']}"):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
                 st.rerun()
     else:
-        st.info("Ficha vazia. Adicione o primeiro exercício acima.")
-
-    # 4. ÁREA DE EXCLUSÃO (Para você conseguir limpar a ficha se precisar)
-    st.divider()
-    st.subheader("🗑️ Gerenciar Exercícios da Ficha")
-    if not df_atuais.empty:
-        for idx, row in df_atuais.iterrows():
-            col_nome, col_btn = st.columns([3, 1])
-            col_nome.write(f"• {row['nome']}")
-            if col_btn.button("Excluir", key=f"del_{row['id']}"):
-                with engine.begin() as conn:
-                    conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": row['id']})
-                st.rerun()
-    else:
-        st.info("Nenhum exercício nesta ficha.")
+        st.info("Nenhum exercício neste treino ainda.")
 
     # 4. TABELA DE VISUALIZAÇÃO (Para você ver a ficha a ser montada em tempo real)
     st.divider()
