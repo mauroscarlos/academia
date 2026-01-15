@@ -18,7 +18,7 @@ def get_engine():
         db = creds['database']
         
         # Montagem da URL com Connection Pooling
-        conn_url = f"postgresql://{user}:{pw}@{host}:{port}/{db}?pgbouncer=true"
+        conn_url = f"postgresql://{user}:{pw}@{host}:{port}/{db}"
         return create_engine(conn_url, pool_pre_ping=True)
     except Exception as e:
         st.error(f"Erro ao ler credenciais: {e}")
