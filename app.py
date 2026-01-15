@@ -49,13 +49,14 @@ elif menu == "⚙️ Treinos":
     # Criando as abas para organizar o trabalho
     tab_montar, tab_editar = st.tabs(["🆕 Montar Novo Treino", "✏️ Editar/Reordenar Treinos"])
 
-    # --- ABA 1: MONTAR NOVO TREINO (SEU CÓDIGO ORIGINAL) ---
+    # --- ABA 1: MONTAR NOVO TREINO (SEU FORMULÁRIO ORIGINAL) ---
     with tab_montar:
         st.subheader("📝 Prescrever Treino")
         st.cache_data.clear()
         
-        alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
-        bib = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
+        # Busca alunos e biblioteca para o cadastro
+        alunos = pd.read_sql(text("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome"), engine)
+        bib = pd.read_sql(text("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome"), engine)
         
         c_al, c_tr = st.columns(2)
         al_sel = c_al.selectbox("Aluno:", alunos['nome'].tolist(), key="aluno_novo")
@@ -69,6 +70,7 @@ elif menu == "⚙️ Treinos":
 
         grupos_disponiveis = ["Peito", "Costas", "Pernas", "Ombros", "Bíceps", "Tríceps", "Abdomen", "Cardio", "Glúteos", "Antebraço"]
 
+        # Seletores de Grupos
         for i, grupo_atual in enumerate(st.session_state.lista_grupos_ficha):
             st.session_state.lista_grupos_ficha[i] = st.selectbox(
                 f"Grupo {i+1}", 
@@ -101,16 +103,16 @@ elif menu == "⚙️ Treinos":
             if ex2_check == "Sim":
                 ex2 = st.selectbox("Selecione o segundo exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
             
-            # Aqui entraria o seu botão de salvar o novo exercício (Insert)
+            # --- Continue aqui com seus campos de Séries, Repetições e o botão de INSERT ---
             st.divider()
-            st.write("*(Continue aqui com os campos de Séries, Repetições e o botão Salvar)*")
+            st.warning("⚠️ Lembre-se de incluir o botão 'Salvar' com o comando INSERT aqui.")
 
-    # --- ABA 2: EDITAR / REORDENAR (NOVA FUNCIONALIDADE) ---
+    # --- ABA 2: EDITAR / REORDENAR (GERENCIAMENTO) ---
     with tab_editar:
         st.subheader("✏️ Gerenciar Exercícios Criados")
         
         try:
-            # Seleção de aluno para edição
+            # Reutiliza a lista de alunos da aba anterior
             al_sel_ed = st.selectbox("Selecione o Aluno para gerir:", alunos['nome'].tolist(), key="aluno_edit")
             id_al_ed = int(alunos[alunos['nome'] == al_sel_ed]['id'].values[0])
 
@@ -118,11 +120,11 @@ elif menu == "⚙️ Treinos":
             df_tr_ed = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": id_al_ed})
             
             if df_tr_ed.empty:
-                st.info("Este aluno ainda não possui treinos.")
+                st.info("Este aluno ainda não possui treinos cadastrados.")
             else:
-                tr_ed_sel = st.selectbox("Selecione a Ficha:", df_tr_ed['treino_nome'].tolist(), key="ficha_edit")
+                tr_ed_sel = st.selectbox("Selecione a Ficha para editar:", df_tr_ed['treino_nome'].tolist(), key="ficha_edit")
 
-                # Busca exercícios ordenados
+                # Busca exercícios ordenados pela coluna 'ordem'
                 df_fichas_ed = pd.read_sql(text("""
                     SELECT f.id, e.nome as ex_nome, f.series, f.repeticoes, f.carga_atual, f.ordem
                     FROM fichas_treino f
@@ -131,6 +133,7 @@ elif menu == "⚙️ Treinos":
                     ORDER BY f.ordem ASC, f.id ASC
                 """), engine, params={"u": id_al_ed, "t": tr_ed_sel})
 
+                # Formulário de edição em lote
                 with st.form("edicao_treino_lote"):
                     lista_upd = []
                     for _, row in df_fichas_ed.iterrows():
@@ -153,10 +156,10 @@ elif menu == "⚙️ Treinos":
                                         UPDATE fichas_treino SET ordem = :o, repeticoes = :r, carga_atual = :c 
                                         WHERE id = :id
                                     """), {"o": item['o'], "r": item['r'], "c": item['k'], "id": item['id']})
-                        st.success("Ficha atualizada!")
+                        st.success("Ficha atualizada com sucesso!")
                         st.rerun()
         except Exception as e:
-            st.error(f"Erro ao carregar edição: {e}")
+            st.error(f"Ocorreu um erro ao carregar a gestão: {e}")
 
 # --- 2. TREINAR AGORA (ALUNO) ---
 if menu == "🏋️ Treinar Agora":
