@@ -133,25 +133,54 @@ elif menu == "🏋️ Treinar Agora":
 # --- 3. MONTAR TREINO (ADMIN) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever Treino")
+    
+    # Criamos um contador no session_state para resetar o form
+    if 'form_reset_count' not in st.session_state:
+        st.session_state.form_reset_count = 0
+
     alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     exs = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
-    with st.form("montar"):
-        aluno = st.selectbox("Aluno", alunos['nome'].tolist())
+    # A key muda toda vez que você salva, limpando tudo
+    with st.form(key=f"montar_ficha_{st.session_state.form_reset_count}"):
+        aluno_selecionado = st.selectbox("Aluno", alunos['nome'].tolist())
         t_nome = st.selectbox("Treino", ["Treino A", "Treino B", "Treino C", "Treino D"])
-        exercicio = st.selectbox("Exercício", exs['nome'].tolist())
-        c1, c2, c3 = st.columns(3)
-        s = c1.number_input("Séries", 1, 10, 3)
-        r = c2.text_input("Reps", "12")
-        cg = c3.text_input("Carga (kg)", "10")
-        desc = st.number_input("Descanso (segundos)", 30, 300, 60)
-        if st.form_submit_button("Adicionar"):
-            id_a = alunos[alunos['nome'] == aluno]['id'].values[0]
-            id_e = exs[exs['nome'] == exercicio]['id'].values[0]
-            with engine.begin() as conn:
-                conn.execute(text("INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso) VALUES (:u, :t, :e, :s, :r, :cg, :td)"),
-                             {"u": int(id_a), "t": t_nome, "e": int(id_e), "s": s, "r": r, "cg": cg, "td": desc})
-            st.success("Adicionado!")
+        exercicio_selecionado = st.selectbox("Exercício", exs['nome'].tolist())
+        
+        col1, col2, col3 = st.columns(3)
+        tipo_meta = col1.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"])
+        r = col2.text_input("Meta (ex: 12-10-8 ou 45s)", value="12")
+        s = col3.number_input("Séries", 1, 10, 3)
+        
+        col_c, col_d = st.columns(2)
+        cg = col_c.text_input("Carga (kg)", "10")
+        desc = col_d.number_input("Descanso (segundos)", 30, 300, 60)
+        
+        obs = st.text_area("Observações Técnicas (ex: Postura, Drop-set, etc.)", placeholder="Dica para o aluno...")
+        
+        if st.form_submit_button("✅ Adicionar à Ficha"):
+            id_a = alunos[alunos['nome'] == aluno_selecionado]['id'].values[0]
+            id_e = exs[exs['nome'] == exercicio_selecionado]['id'].values[0]
+            
+            try:
+                with engine.begin() as conn:
+                    conn.execute(text("""
+                        INSERT INTO fichas_treino 
+                        (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao) 
+                        VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :obs)
+                    """), {
+                        "u": int(id_a), "t": t_nome, "e": int(id_e), "s": s, "r": r, 
+                        "cg": cg, "td": desc, "tm": tipo_meta, "obs": obs
+                    })
+                
+                # SUCESSO: Incrementamos o contador para limpar a tela
+                st.session_state.form_reset_count += 1
+                st.success(f"Exercício '{exercicio_selecionado}' adicionado com sucesso!")
+                time.sleep(1) # Pequena pausa para você ver a mensagem de sucesso
+                st.rerun() # Recarrega a página com o form limpo
+                
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
 
 # --- 4. BIBLIOTECA (ADMIN) ---
 elif menu == "⚙️ Biblioteca":
