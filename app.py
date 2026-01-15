@@ -140,25 +140,23 @@ elif menu == "📝 Montar Treino":
     with st.container(border=True):
         st.subheader("Configurar Exercício(s)")
         
-        # 1. Escolha dos Exercícios
+        # Seleção de Exercícios (Linhas superiores)
         ex1 = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex1_{st.session_state.form_token}")
         ex2_check = st.selectbox("2. Combinar com outro (Bi-set)?", ["Não", "Sim"], key=f"ex2_check_{st.session_state.form_token}")
         
-        ex2 = "Não"
         if ex2_check == "Sim":
             ex2 = st.selectbox("Selecione o segundo exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
         
         st.divider()
 
-        # --- CONFIGURAÇÃO DE TIPO E SÉRIES ---
+        # --- TUDO EM UMA LINHA SÓ ---
         tipo_meta_v = st.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
         label_dinamico = "Tempo" if tipo_meta_v == "Tempo (s)" else "Reps"
         
-        # --- LINHA ÚNICA DE DADOS TÉCNICOS ---
-        # Criamos as colunas para Séries, [Reps], Descanso e Carga
+        # Definimos as larguras das colunas para caber tudo lado a lado
         if tipo_meta_v != "Pirâmide":
             if ex2_check == "Sim":
-                # Layout Bi-set: Séries | Reps 1 | Reps 2 | Descanso | Carga
+                # Layout Bi-set: Séries, R1, R2, Desc, Carga
                 c_ser, c_r1, c_r2, c_desc, c_cg = st.columns([1, 1.5, 1.5, 1, 1])
                 series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
                 final_reps1 = c_r1.text_input(f"{label_dinamico} 1", "12", key=f"r1_{st.session_state.form_token}")
@@ -166,7 +164,7 @@ elif menu == "📝 Montar Treino":
                 descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
                 carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
             else:
-                # Layout Simples: Séries | Reps | Descanso | Carga
+                # Layout Simples: Séries, Reps, Desc, Carga (Exatamente como o print image_cad56b)
                 c_ser, c_rep, c_desc, c_cg = st.columns([1, 2, 1, 1])
                 series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
                 final_reps1 = c_rep.text_input(label_dinamico, "12", key=f"r1_{st.session_state.form_token}")
@@ -174,32 +172,20 @@ elif menu == "📝 Montar Treino":
                 descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
                 carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
         else:
-            # MODO PIRÂMIDE: Séries, Descanso e Carga em cima, Reps dinâmicas em baixo
+            # Para Pirâmide, mantemos os controles em linha e as caixas logo abaixo
             c_ser, c_desc, c_cg = st.columns([1, 1, 1])
             series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
             descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
             carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
             
-            st.write(f"📊 **Configurar Pirâmide (Reps por série)**")
-            
-            # Reps para o Exercício 1
-            cols_p1 = st.columns(series)
-            reps_list1 = []
+            st.caption(f"🔢 Repetições da Pirâmide ({series} séries):")
+            cols_p = st.columns(series)
+            reps_list = []
             for i in range(series):
-                r_val = cols_p1[i].text_input(f"S{i+1}", "12", key=f"p1_s{i}_{st.session_state.form_token}", label_visibility="collapsed")
-                reps_list1.append(r_val)
-            final_reps1 = " - ".join(reps_list1)
-
-            if ex2_check == "Sim":
-                st.write(f"📊 **Pirâmide para: {ex2}**")
-                cols_p2 = st.columns(series)
-                reps_list2 = []
-                for i in range(series):
-                    r_val = cols_p2[i].text_input(f"S{i+1}", "12", key=f"p2_s{i}_{st.session_state.form_token}", label_visibility="collapsed")
-                    reps_list2.append(r_val)
-                final_reps2 = " - ".join(reps_list2)
-            else:
-                final_reps2 = ""
+                r_val = cols_p[i].text_input(f"S{i+1}", "12", key=f"p1_s{i}_{st.session_state.form_token}", label_visibility="collapsed")
+                reps_list.append(r_val)
+            final_reps1 = " - ".join(reps_list)
+            final_reps2 = ""
 
         st.write("") 
         if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
