@@ -19,19 +19,6 @@ def get_engine():
 
 engine = get_engine()
 
-# --- FUNÇÃO DE E-MAIL ---
-def enviar_email_cadastro(nome, email_destino, username, senha):
-    url_sistema = "https://seu-app-de-treino.streamlit.app/" 
-    corpo = f"<html><body><h3>Olá, {nome}! 💪</h3><p>Acesse o sistema: <a href='{url_sistema}'>{url_sistema}</a><br>Usuário: {username}<br>Senha: {senha}</p></body></html>"
-    try:
-        msg = MIMEMultipart(); msg['From'] = st.secrets["email"]["usuario"]; msg['To'] = email_destino; msg['Subject'] = "🏋️ Seu Acesso"
-        msg.attach(MIMEText(corpo, 'html'))
-        with smtplib.SMTP_SSL(st.secrets["email"]["smtp_server"], st.secrets["email"]["smtp_port"]) as server:
-            server.login(st.secrets["email"]["usuario"], st.secrets["email"]["senha"])
-            server.sendmail(msg['From'], msg['To'], msg.as_string())
-        return True
-    except: return False
-
 # --- LOGIN ---
 if 'logado' not in st.session_state: st.session_state.logado = False
 
@@ -71,12 +58,13 @@ if menu == "📊 Dashboard":
 
 # --- 2. TREINAR AGORA ---
 elif menu == "🏋️ Treinar Agora":
-    meus_treinos = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": st.session_state.user_id})['treino_nome'].tolist()
-    if not meus_treinos:
-        st.warning("Nenhuma ficha cadastrada.")
+    df_t = pd.read_sql(text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u"), engine, params={"u": st.session_state.user_id})
+    if df_t.empty:
+        st.warning("Nenhuma ficha encontrada.")
     else:
-        t_sel = st.selectbox("Escolha o Treino:", meus_treinos)
+        t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
         if 'treino_andamento' not in st.session_state: st.session_state.treino_andamento = False
+        
         if not st.session_state.treino_andamento:
             if st.button("🚀 INICIAR TREINO", use_container_width=True, type="primary"):
                 st.session_state.treino_andamento = True; st.session_state.inicio_t = datetime.now(); st.rerun()
@@ -87,7 +75,7 @@ elif menu == "🏋️ Treinar Agora":
                 minutos = int(tempo.total_seconds() / 60)
                 with engine.begin() as conn:
                     conn.execute(text("INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos) VALUES (:u, :t, :d)"), {"u": st.session_state.user_id, "t": t_sel, "d": minutos})
-                st.session_state.treino_andamento = False; st.balloons(); time.sleep(1); st.rerun()
+                st.session_state.treino_andamento = False; st.rerun()
 
         df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         nomes_no_par = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
@@ -102,7 +90,7 @@ elif menu == "🏋️ Treinar Agora":
                     st.write(f"🎯 {row['series']}x {row['repeticoes']} | ⚖️ {row['carga_atual']}kg")
                     if st.session_state.treino_andamento:
                         if row['nome'] in nomes_no_par:
-                            st.error("🚫 SEM DESCANSO! Vá direto para o par.")
+                            st.error("🚫 SEM DESCANSO! Vá para o próximo.")
                         else:
                             if st.button(f"⏱️ Descanso {row['tempo_descanso']}s", key=f"d_{row['id']}"):
                                 p = st.empty()
@@ -122,17 +110,13 @@ elif menu == "📝 Montar Treino":
     id_al = int(alunos_df[alunos_df['nome'] == al_sel]['id'].values[0])
     tr_sel = col_tr.selectbox("Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
 
-    # Carrega o que já está na ficha para poder combinar
-    df_na_ficha = pd.read_sql(text("SELECT f.id, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t"), engine, params={"u": id_al, "t": tr_sel})
     lista_bib = bib_df['nome'].tolist()
-    lista_para_combinar = ["Não"] + df_na_ficha['nome'].tolist()
-
     if 'form_token' not in st.session_state: st.session_state.form_token = 0
 
     with st.container(border=True):
         st.subheader("Adicionar Exercício")
         ex_p = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex_{st.session_state.form_token}")
-        comb = st.selectbox("2. Fazer logo após (Combinar com):", lista_para_combinar, key=f"cb_{st.session_state.form_token}")
+        comb = st.selectbox("2. Combinar com (Bi-set):", ["Não"] + lista_bib, key=f"cb_{st.session_state.form_token}")
         
         c1, c2, c3 = st.columns(3)
         tipo = c1.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
@@ -152,9 +136,9 @@ elif menu == "📝 Montar Treino":
 
     st.divider()
     st.subheader(f"📋 Exercícios no {tr_sel}")
-    if not df_na_ficha.empty:
-        df_visual = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
-        for _, r in df_visual.iterrows():
+    df_ficha = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
+    if not df_ficha.empty:
+        for _, r in df_ficha.iterrows():
             c1, c2 = st.columns([4, 1])
             txt = f"🔹 **{r['nome']}** - {r['repeticoes']} reps"
             if r['exercicio_combinado_id']: txt += f" (Bi-set com {r['exercicio_combinado_id']})"
@@ -176,10 +160,10 @@ elif menu == "⚙️ Biblioteca":
 # --- 5. GESTÃO DE USUÁRIOS ---
 elif menu == "🛡️ Gestão de Usuários":
     st.header("🛡️ Alunos")
-    with st.form("user_form"):
+    with st.form("u_form"):
         nome, email, user, senha = st.text_input("Nome"), st.text_input("Email"), st.text_input("Usuário"), st.text_input("Senha")
         if st.form_submit_button("Cadastrar"):
             u_l = user.lower().strip().replace(" ", ".")
             with engine.begin() as conn: conn.execute(text("INSERT INTO usuarios (nome, email, username, senha, nivel) VALUES (:n, :e, :u, :s, 'user')"), {"n":nome, "e":email, "u":u_l, "s":senha})
-            enviar_email_cadastro(nome, email, u_l, senha); st.success("Cadastrado!")
+            st.success("Cadastrado!")
     st.dataframe(pd.read_sql("SELECT nome, email, username FROM usuarios WHERE nivel = 'user'", engine), use_container_width=True)
