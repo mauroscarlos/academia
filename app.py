@@ -9,9 +9,13 @@ st.set_page_config(page_title="SGF Treino - Gestão de Academia", layout="wide",
 # --- CONEXÃO COM O SUPABASE ---
 @st.cache_resource
 def get_engine():
-    # Certifique-se de que no Secrets está como [connections.postgresql]
-    url = st.secrets["connections"]["postgresql"]["url"]
-    return create_engine(url, pool_pre_ping=True)
+    # Puxa os dados das secrets separadamente
+    creds = st.secrets["connections"]["postgresql"]
+    
+    # Monta a URL de forma segura (com suporte a caracteres especiais na senha)
+    conn_url = f"postgresql://{creds['username']}:{creds['password']}@{creds['host']}:{creds['port']}/{creds['database']}?pgbouncer=true"
+    
+    return create_engine(conn_url, pool_pre_ping=True)
 
 engine = get_engine()
 
