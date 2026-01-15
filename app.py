@@ -65,22 +65,21 @@ if menu == "🏋️ Treinar Agora":
         
         if not df_ex.empty:
             with st.expander("📲 Exportar treino para área de transferência"):
-                # Montando o texto sem nenhum caractere especial de programação
-                # Usamos apenas o \n normal do Python para pular linha
-                texto_limpo = f"TREINO: {t_sel}\n"
-                texto_limpo += "---------------------------------\n"
+                # Montamos o texto exatamente como ele deve aparecer, linha por linha
+                lista_treino = [f"TREINO: {t_sel}", "---------------------------------"]
                 
                 for _, r in df_ex.iterrows():
-                    # Formato direto: Nome - Séries - Reps - Descanso
-                    linha = f"{r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s\n"
-                    texto_limpo += linha
+                    # Formato: Nome - Series - Reps - Descanso
+                    linha = f"{r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s"
+                    lista_treino.append(linha)
                 
-                texto_para_js = texto_limpo.replace("\n", "\\n") # Prepara para o JavaScript
+                # Juntamos tudo em uma única string separada por quebras de linha reais
+                texto_final = "\n".join(lista_treino)
 
-                # Botão de Cópia com visual mais discreto
+                # Botão de Cópia via JavaScript (corrigido para não mostrar \n no Zap)
                 st.components.v1.html(f"""
                     <div style="text-align: center;">
-                        <textarea id="textoTreino" style="display:none;">{texto_para_js}</textarea>
+                        <textarea id="textoTreino" style="display:none;">{texto_final}</textarea>
                         <button onclick="copiarTexto()" style="
                             background-color: #25D366; 
                             color: white; 
@@ -96,15 +95,20 @@ if menu == "🏋️ Treinar Agora":
 
                     <script>
                         function copiarTexto() {{
-                            var copyText = document.getElementById("textoTreino");
-                            copyText.style.display = "block";
-                            copyText.select();
+                            var text = `{texto_final}`;
+                            var dummy = document.createElement("textarea");
+                            document.body.appendChild(dummy);
+                            dummy.value = text;
+                            dummy.select();
                             document.execCommand("copy");
-                            copyText.style.display = "none";
-                            alert("Copiado! Só colar no Zap.");
+                            document.body.removeChild(dummy);
+                            alert("Copiado! Só colar no WhatsApp.");
                         }}
                     </script>
                 """, height=70)
+                
+                # Exibição visual no app para o aluno conferir
+                st.text(texto_final)
 
                 st.caption("Depois de clicar, abra seu WhatsApp e use a função 'Colar'.")
 
