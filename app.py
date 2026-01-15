@@ -165,22 +165,24 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO (COM OPÇÃO DE EXCLUIR FICHA COMPLETA) ---
+# --- 3. MONTAR TREINO (VERSÃO CORRIGIDA E FINAL) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever e Editar Treino")
     
-    # 1. Limpeza e Dados Base
+    # 1. Carregamento de dados base
     st.cache_data.clear()
     alunos_df = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     biblioteca_df = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
-    # Seletores fora do formulário
+    # Seletores fora do formulário (eles definem o contexto)
     col_al, col_tr = st.columns(2)
     aluno_escolhido = col_al.selectbox("Selecione o Aluno:", alunos_df['nome'].tolist())
     id_aluno_atual = int(alunos_df[alunos_df['nome'] == aluno_escolhido]['id'].values[0])
-    nome_do_treino = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
+    
+    # DEFINIÇÃO ÚNICA DA VARIÁVEL: Usaremos 'treino_atual' para evitar o NameError
+    treino_atual = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
 
-    # 2. Busca exercícios já salvos no banco
+    # 2. Busca exercícios salvos para este contexto
     with engine.connect() as conn:
         query_check = text("""
             SELECT f.id, e.nome 
@@ -189,14 +191,17 @@ elif menu == "📝 Montar Treino":
             WHERE f.usuario_id = :u AND f.treino_nome = :t
             ORDER BY f.id ASC
         """)
-        exercicios_na_ficha = pd.read_sql(query_check, conn, params={"u": id_aluno_atual, "t": nome_do_treino})
+        exercicios_na_ficha = pd.read_sql(query_check, conn, params={"u": id_aluno_atual, "t": treino_atual})
 
     # 3. FORMULÁRIO DE CADASTRO
     if 'reset_trigger' not in st.session_state: st.session_state.reset_trigger = 0
 
-    with st.form(key=f"form_v11_{id_aluno_atual}_{nome_do_treino}_{st.session_state.reset_trigger}"):
-        st.subheader(f"Adicionar ao {nome_do_treino}")
+    with st.form(key=f"form_v12_{id_aluno_atual}_{treino_atual}_{st.session_state.reset_trigger}"):
+        st.subheader(f"Adicionar ao {treino_atual}")
+        
         ex_base = st.selectbox("1. Escolha o Exercício:", biblioteca_df['nome'].tolist())
+        
+        # LISTA DE COMBINAÇÃO (BI-SET)
         opcoes_bi_set = ["Não"] + exercicios_na_ficha['nome'].tolist()
         combinar_com = st.selectbox("2. Combinar com (Bi-set):", opcoes_bi_set)
         
@@ -208,6 +213,7 @@ elif menu == "📝 Montar Treino":
         col_cg, col_ds = st.columns(2)
         carga_v = col_cg.text_input("Carga (kg)", "10")
         descanso_v = col_ds.number_input("Descanso (s)", 0, 300, 60)
+        
         obs_v = st.text_area("Observações")
         
         if st.form_submit_button("✅ SALVAR EXERCÍCIO"):
@@ -222,37 +228,41 @@ elif menu == "📝 Montar Treino":
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
-                """), {"u": id_aluno_atual, "t": nome_do_treino, "e": id_ex_modelo, "s": series_v, "r": meta_v, "cg": carga_v, "td": descanso_v, "tm": tipo_m, "ob": obs_v, "cb": id_vinculo})
+                """), {
+                    "u": id_aluno_atual, "t": treino_atual, "e": id_ex_modelo, 
+                    "s": series_v, "r": meta_v, "cg": carga_v, "td": descanso_v, 
+                    "tm": tipo_m, "ob": obs_v, "cb": id_vinculo
+                })
             
             st.session_state.reset_trigger += 1
             st.rerun()
 
-    # 4. TABELA DE CONFERÊNCIA E EXCLUSÃO
+    # 4. TABELA DE CONFERÊNCIA E EXCLUSÃO (Variáveis corrigidas aqui)
     st.divider()
-    st.subheader(f"📋 Exercícios atuais no {nome_do_treino}")
+    st.subheader(f"📋 Exercícios atuais no {treino_atual}")
     if not exercicios_na_ficha.empty:
         for _, r in exercicios_na_ficha.iterrows():
             col1, col2 = st.columns([4, 1])
             col1.write(f"🔹 **{r['nome']}**")
-            if col2.button("🗑️", key=f"del_final_{r['id']}"):
+            if col2.button("🗑️", key=f"del_item_{r['id']}"):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
                 st.rerun()
         
-        # --- NOVO: BOTÃO PARA EXCLUIR TREINO COMPLETO ---
+        # --- ZONA DE EXCLUSÃO COMPLETA ---
         st.write("---")
         with st.expander("⚠️ ZONA DE PERIGO: Excluir Treino Completo"):
-            st.warning(f"Isso apagará TODOS os exercícios do **{nome_do_treino}** de **{aluno_escolhido}**.")
-            confirmar = st.checkbox("Eu entendo que esta ação não pode ser desfeita.")
-            if st.button(f"🔥 APAGAR {nome_do_treino.upper()} AGORA", type="primary", disabled=not confirmar):
+            st.warning(f"Isso apagará TODOS os exercícios do **{treino_atual}** de **{aluno_escolhido}**.")
+            confirmar_del = st.checkbox("Confirmo que desejo apagar a ficha inteira.")
+            if st.button(f"🔥 APAGAR {treino_atual.upper()} AGORA", type="primary", disabled=not confirmar_del):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM fichas_treino WHERE usuario_id = :u AND treino_nome = :t"),
-                                 {"u": id_aluno_atual, "t": nome_do_treino})
-                st.success("Ficha excluída!")
+                                 {"u": id_aluno_atual, "t": treino_atual})
+                st.success("Ficha excluída com sucesso!")
                 time.sleep(1)
                 st.rerun()
     else:
-        st.info("Nenhum exercício neste treino.")
+        st.info(f"Nenhum exercício cadastrado no {treino_atual} para este aluno.")
 
     # 4. TABELA DE VISUALIZAÇÃO (Para você ver a ficha a ser montada em tempo real)
     st.divider()
