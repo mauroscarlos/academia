@@ -54,14 +54,14 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO BLINDADA (SEM DATAS E COM ACENTOS) ---
+        # --- EXPORTAÇÃO BLINDAGEM DE AÇO (FOCO ACENTOS BRASIL) ---
         df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
             with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
                 st.markdown(f"### 📋 Resumo: {t_sel}")
                 
-                # Tabela visual no Streamlit (Fica bonita e com acentos)
+                # Tabela no app (Aqui sempre fica bonito)
                 tabela_html = "| Exercício | Séries | Reps | Descanso |\n| :--- | :--- | :--- | :--- |\n"
                 for _, r in df_ex.iterrows():
                     tabela_html += f"| **{r['nome']}** | {r['series']} | {r['repeticoes']} | {r['tempo_descanso']}s |\n"
@@ -72,17 +72,19 @@ if menu == "🏋️ Treinar Agora":
                 # 1. Preparando os dados
                 df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
                 
-                # TRUQUE DO APÓSTROFO: Impede o Excel de converter pirâmide (10-8-6) em Data
+                # Proteção contra 2006 repetições (Data)
                 df_export['repeticoes'] = df_export['repeticoes'].apply(lambda x: f"'{x}")
                 
+                # Nomes das colunas sem acento para garantir que a 1ª linha não quebre
                 df_export.columns = ['Exercicio', 'Series', 'Reps', 'Descanso']
 
-                # 2. FORMATO EXCEL COMPATÍVEL (CSV + UTF-8-SIG + PONTO E VÍRGULA)
-                # O 'utf-8-sig' com ';' é o que o Excel brasileiro entende melhor para acentos
-                csv_excel = df_export.to_csv(index=False, sep=';', encoding='utf-8-sig')
+                # 2. A MUDANÇA REAL: ISO-8859-1 (Latin-1)
+                # Esse é o formato 'raiz' do Windows Brasil.
+                # Se o Excel não ler isso, a gente chama o padre!
+                csv_excel = df_export.to_csv(index=False, sep=';', encoding='iso-8859-1')
 
                 st.download_button(
-                    label="📥 BAIXAR PARA EXCEL (Sem erro de Data)",
+                    label="📥 BAIXAR PARA EXCEL (Blindagem de Aço)",
                     data=csv_excel,
                     file_name=f'Treino_{t_sel}.csv',
                     mime='text/csv',
