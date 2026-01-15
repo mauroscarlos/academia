@@ -138,7 +138,9 @@ elif menu == "📝 Montar Treino":
     if 'form_token' not in st.session_state: st.session_state.form_token = 0
 
     with st.container(border=True):
-        st.subheader(f"Adicionar ao {tr_sel} ({foco_texto})")
+        st.subheader("Configurar Exercício(s)")
+        
+        # Seleção de exercícios (ocupando a largura total)
         ex1 = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex1_{st.session_state.form_token}")
         ex2_check = st.selectbox("2. Combinar com outro (Bi-set)?", ["Não", "Sim"], key=f"ex2_check_{st.session_state.form_token}")
         
@@ -147,33 +149,40 @@ elif menu == "📝 Montar Treino":
             ex2 = st.selectbox("Selecione o segundo exercício:", lista_bib, key=f"ex2_{st.session_state.form_token}")
         
         st.divider()
-        col_m, col_s, col_c = st.columns(3)
-        tipo_meta_v = col_m.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-        series = col_s.number_input("Séries", 1, 12, 3, key=f"ser_{st.session_state.form_token}")
-        carga = col_c.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
+
+        # --- LINHA COMPACTA DE CONFIGURAÇÕES ---
+        # Proporções: Tipo (3), Séries (1), Descanso (1), Carga (1)
+        c_tipo, c_ser, c_desc, c_carga = st.columns([3, 1, 1, 1])
         
-        r1_c, r2_c = st.columns(2)
-        reps1 = r1_c.text_input(f"Reps: {ex1}", "12", key=f"r1_{st.session_state.form_token}")
+        tipo_meta_v = c_tipo.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+        series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+        descanso = c_desc.number_input("Descanso (s)", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+        carga = c_carga.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
+
+        # --- LINHA DE REPETIÇÕES (Abaixo das configs) ---
+        r1_col, r2_col = st.columns(2)
+        reps1 = r1_col.text_input(f"Reps: {ex1}", "12", key=f"r1_{st.session_state.form_token}")
+        
         reps2 = "12"
         if ex2_check == "Sim":
-            reps2 = r2_c.text_input(f"Reps: {ex2}", "10", key=f"r2_{st.session_state.form_token}")
+            reps2 = r2_col.text_input(f"Reps: {ex2}", "10", key=f"r2_{st.session_state.form_token}")
         
-        descanso = st.number_input("Descanso (s)", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-        
-        if st.button("✅ SALVAR EXERCÍCIO", use_container_width=True, type="primary"):
+        st.write("") # Espaçador
+        if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
             id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
-            # Aqui salvamos o nome do treino incluindo o foco (ex: "Treino A - Peito")
-            # Mas para não quebrar a lógica, vamos manter o nome puro e exibir o foco via código
+            exercicio_biset = ex2 if ex2_check == "Sim" else None
             
             with engine.begin() as conn:
+                # Salva o Primeiro
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                 """), {
                     "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, 
-                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": ex2 if ex2_check == "Sim" else None
+                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": exercicio_biset
                 })
                 
+                # Se for Bi-set, salva o Segundo
                 if ex2_check == "Sim":
                     id_ex2 = int(bib[bib['nome'] == ex2]['id'].values[0])
                     conn.execute(text("""
@@ -184,9 +193,11 @@ elif menu == "📝 Montar Treino":
                         "cg": carga, "td": descanso, "tm": tipo_meta_v, "cb": None
                     })
             
+            # Limpeza do formulário incrementando o token
             st.session_state.form_token += 1
-            st.success(f"Adicionado ao {tr_sel}!")
-            time.sleep(1); st.rerun()
+            st.success("Salvo com sucesso!")
+            time.sleep(1)
+            st.rerun()
 
     st.divider()
     df_ficha = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
