@@ -54,29 +54,25 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO (CONSULTA COMPLETA PARA NÃO DAR ERRO) ---
+        # --- EXPORTAÇÃO (CONSULTA COM ORDEM CORRIGIDA) ---
         df_ex = pd.read_sql(text("""
             SELECT f.*, e.nome, e.url_imagem 
             FROM fichas_treino f 
             JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
             WHERE f.usuario_id = :u AND f.treino_nome = :t 
-            ORDER BY f.id ASC
+            ORDER BY f.ordem ASC, f.id ASC
         """), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
             with st.expander("📲 Exportar treino para área de transferência"):
-                # Montamos o texto exatamente como ele deve aparecer, linha por linha
                 lista_treino = [f"TREINO: {t_sel}", "---------------------------------"]
                 
                 for _, r in df_ex.iterrows():
-                    # Formato: Nome - Series - Reps - Descanso
                     linha = f"{r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s"
                     lista_treino.append(linha)
                 
-                # Juntamos tudo em uma única string separada por quebras de linha reais
                 texto_final = "\n".join(lista_treino)
 
-                # Botão de Cópia via JavaScript (corrigido para não mostrar \n no Zap)
                 st.components.v1.html(f"""
                     <div style="text-align: center;">
                         <textarea id="textoTreino" style="display:none;">{texto_final}</textarea>
@@ -107,9 +103,7 @@ if menu == "🏋️ Treinar Agora":
                     </script>
                 """, height=70)
                 
-                # Exibição visual no app para o aluno conferir
                 st.text(texto_final)
-
                 st.caption("Depois de clicar, abra seu WhatsApp e use a função 'Colar'.")
 
         st.divider()
@@ -132,7 +126,7 @@ if menu == "🏋️ Treinar Agora":
                 st.session_state.inicio_t = datetime.now()
                 st.rerun()
 
-        # Renderização dos Cards com as Imagens (O campo url_imagem agora está no SQL)
+        # Renderização dos Cards respeitando a ordem definida pelo Admin
         nomes_no_par = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
 
         for _, row in df_ex.iterrows():
