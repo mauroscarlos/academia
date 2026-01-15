@@ -150,49 +150,61 @@ elif menu == "📝 Montar Treino":
         
         st.divider()
 
-        # --- CONFIGURAÇÃO DE SÉRIES E TIPO ---
-        c_tipo, c_ser, c_desc, c_carga = st.columns([2, 1, 1, 1])
-        tipo_meta_v = c_tipo.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-        series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-        descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-        carga = c_carga.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
-
-        # --- LÓGICA DE REPS DINÂMICAS (PIRÂMIDE OU SIMPLES) ---
+        # --- CONFIGURAÇÃO DE TIPO E SÉRIES ---
+        tipo_meta_v = st.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
         label_dinamico = "Tempo" if tipo_meta_v == "Tempo (s)" else "Reps"
         
-        final_reps1 = ""
-        final_reps2 = ""
-
-        if tipo_meta_v == "Pirâmide":
-            st.write(f"📊 **Configurar Pirâmide para: {ex1}**")
+        # --- LINHA ÚNICA DE DADOS TÉCNICOS ---
+        # Criamos as colunas para Séries, [Reps], Descanso e Carga
+        if tipo_meta_v != "Pirâmide":
+            if ex2_check == "Sim":
+                # Layout Bi-set: Séries | Reps 1 | Reps 2 | Descanso | Carga
+                c_ser, c_r1, c_r2, c_desc, c_cg = st.columns([1, 1.5, 1.5, 1, 1])
+                series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+                final_reps1 = c_r1.text_input(f"{label_dinamico} 1", "12", key=f"r1_{st.session_state.form_token}")
+                final_reps2 = c_r2.text_input(f"{label_dinamico} 2", "10", key=f"r2_{st.session_state.form_token}")
+                descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+                carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+            else:
+                # Layout Simples: Séries | Reps | Descanso | Carga
+                c_ser, c_rep, c_desc, c_cg = st.columns([1, 2, 1, 1])
+                series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+                final_reps1 = c_rep.text_input(label_dinamico, "12", key=f"r1_{st.session_state.form_token}")
+                final_reps2 = "12"
+                descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+                carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+        else:
+            # MODO PIRÂMIDE: Séries, Descanso e Carga em cima, Reps dinâmicas em baixo
+            c_ser, c_desc, c_cg = st.columns([1, 1, 1])
+            series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+            descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+            carga = c_cg.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+            
+            st.write(f"📊 **Configurar Pirâmide (Reps por série)**")
+            
+            # Reps para o Exercício 1
             cols_p1 = st.columns(series)
             reps_list1 = []
             for i in range(series):
-                r_val = cols_p1[i].text_input(f"Série {i+1}", "12", key=f"p1_s{i}_{st.session_state.form_token}")
+                r_val = cols_p1[i].text_input(f"S{i+1}", "12", key=f"p1_s{i}_{st.session_state.form_token}", label_visibility="collapsed")
                 reps_list1.append(r_val)
-            final_reps1 = " - ".join(reps_list1) # Junta como: 12-10-8
-            
+            final_reps1 = " - ".join(reps_list1)
+
             if ex2_check == "Sim":
-                st.write(f"📊 **Configurar Pirâmide para: {ex2}**")
+                st.write(f"📊 **Pirâmide para: {ex2}**")
                 cols_p2 = st.columns(series)
                 reps_list2 = []
                 for i in range(series):
-                    r_val = cols_p2[i].text_input(f"Série {i+1}", "12", key=f"p2_s{i}_{st.session_state.form_token}")
+                    r_val = cols_p2[i].text_input(f"S{i+1}", "12", key=f"p2_s{i}_{st.session_state.form_token}", label_visibility="collapsed")
                     reps_list2.append(r_val)
                 final_reps2 = " - ".join(reps_list2)
-        else:
-            # Layout Normal (Reps ou Tempo único)
-            r1_col, r2_col = st.columns(2)
-            final_reps1 = r1_col.text_input(f"{label_dinamico} ({ex1.split()[0]})", "12", key=f"r1_{st.session_state.form_token}")
-            if ex2_check == "Sim":
-                final_reps2 = r2_col.text_input(f"{label_dinamico} ({ex2.split()[0]})", "10", key=f"r2_{st.session_state.form_token}")
+            else:
+                final_reps2 = ""
 
         st.write("") 
         if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
             id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
-            
             with engine.begin() as conn:
-                # Salva o Primeiro
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
@@ -201,7 +213,6 @@ elif menu == "📝 Montar Treino":
                     "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": ex2 if ex2_check == "Sim" else None
                 })
                 
-                # Se for Bi-set, salva o Segundo
                 if ex2_check == "Sim":
                     id_ex2 = int(bib[bib['nome'] == ex2]['id'].values[0])
                     conn.execute(text("""
@@ -213,8 +224,8 @@ elif menu == "📝 Montar Treino":
                     })
             
             st.session_state.form_token += 1
-            st.success("Pirâmide salva com sucesso!")
-            time.sleep(1)
+            st.success("Salvo!")
+            time.sleep(0.5)
             st.rerun()
 
     st.divider()
