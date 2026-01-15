@@ -54,14 +54,14 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO CORRIGIDA (SEM BIBLIOTECAS EXTRAS) ---
+        # --- EXPORTAÇÃO DEFINITIVA (FOCO EM EXCEL BRASIL) ---
         df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
             with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
                 st.markdown(f"### 📋 Resumo: {t_sel}")
                 
-                # Tabela visual na tela
+                # Tabela visual bonitinha na tela do app
                 tabela_html = "| Exercício | Séries | Reps | Descanso |\n| :--- | :--- | :--- | :--- |\n"
                 for _, r in df_ex.iterrows():
                     tabela_html += f"| **{r['nome']}** | {r['series']} | {r['repeticoes']} | {r['tempo_descanso']}s |\n"
@@ -71,20 +71,20 @@ if menu == "🏋️ Treinar Agora":
 
                 # 1. Preparamos os dados exatamente como você pediu
                 df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
-                df_export.columns = ['Exercício', 'Séries', 'Reps', 'Descanso']
+                df_export.columns = ['Exercicio', 'Series', 'Reps', 'Descanso']
 
-                # 2. TRUQUE PARA O EXCEL: UTF-16 + SEPARADOR TAB OU PONTO-E-VÍRGULA
-                # O 'utf-16' é o formato que o Excel mais gosta para arquivos de texto com acento
-                csv_data = df_export.to_csv(index=False, sep='\t', encoding='utf-16')
+                # 2. A SOLUÇÃO PARA O EXCEL BRASILEIRO:
+                # Usamos 'latin-1' (ou cp1252) para os acentos e ';' para as colunas
+                csv_excel = df_export.to_csv(index=False, sep=';', encoding='latin-1')
 
                 st.download_button(
-                    label="📥 BAIXAR FICHA PARA EXCEL (Acentos Corrigidos)",
-                    data=csv_data,
+                    label="📥 BAIXAR PARA EXCEL (Formato Corrigido)",
+                    data=csv_excel,
                     file_name=f'Treino_{t_sel}.csv',
                     mime='text/csv',
                     use_container_width=True
                 )
-                st.caption("✅ As colunas de 'Reps' (ex: 12-10-8) não serão mais convertidas em datas.")
+                st.info("💡 Este arquivo abre direto no Excel com colunas e acentos protegidos.")
 
         st.divider()
 
