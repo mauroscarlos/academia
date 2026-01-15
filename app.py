@@ -48,24 +48,27 @@ if not st.session_state.logado:
                 st.session_state.logado = True
                 st.session_state.user_id = int(df.iloc[0]['id'])
                 st.session_state.user_nome = df.iloc[0]['nome']
-                st.session_state.user_nivel = df.iloc[0]['nivel']
+                st.session_state.user_nivel = df.iloc[0]['nivel'] # 'admin' ou 'user'
                 st.rerun()
             else: st.error("Usuário ou senha inválidos.")
     st.stop()
 
-# --- MENU LATERAL ---
+# --- MENU LATERAL (LÓGICA DE PERMISSÃO) ---
 st.sidebar.title(f"Olá, {st.session_state.user_nome.split()[0]}!")
+
+# Definição das opções baseadas no nível de acesso
+opcoes = ["🏋️ Treinar Agora"]
+
+if st.session_state.user_nivel == 'admin':
+    opcoes.extend(["📝 Montar Treino", "⚙️ Biblioteca", "🛡️ Gestão de Usuários"])
+
+menu = st.sidebar.radio("Ir para:", opcoes)
+
 if st.sidebar.button("Sair"):
     st.session_state.clear()
     st.rerun()
 
-opcoes = ["🏋️ Treinar Agora", "📝 Montar Treino", "⚙️ Biblioteca"]
-if st.session_state.user_nivel == 'admin':
-    opcoes.append("🛡️ Gestão de Usuários")
-
-menu = st.sidebar.radio("Ir para:", opcoes)
-
-# --- 1. TREINAR AGORA ---
+# --- 1. TREINAR AGORA (Acesso Aluno e Admin) ---
 if menu == "🏋️ Treinar Agora":
     st.header("🚀 Meu Treino")
     t_sel = st.selectbox("Escolha o treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
@@ -87,17 +90,22 @@ if menu == "🏋️ Treinar Agora":
                     st.image(img, use_container_width=True)
                 with col2:
                     st.subheader(row['nome'])
-                    st.write(f"**{row['series']}x{row['repeticoes']}** | Carga: {row['carga_atual']}kg")
+                    st.write(f"**{row['series']}x{row['repeticoes']}**")
+                    # Permitir que o aluno atualize apenas a carga
+                    nova_carga = st.text_input("Carga (kg)", value=str(row['carga_atual']), key=f"carga_{row['id']}")
+                    if nova_carga != str(row['carga_atual']):
+                         with engine.begin() as conn:
+                            conn.execute(text("UPDATE fichas_treino SET carga_atual = :c WHERE id = :id"), {"c": nova_carga, "id": row['id']})
                 st.divider()
 
-# --- 2. MONTAR TREINO ---
-elif menu == "📝 Montar Treino":
-    st.header("📝 Nova Ficha")
-    alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user'", engine)
+# --- 2. MONTAR TREINO (Acesso Admin) ---
+elif menu == "📝 Montar Treino" and st.session_state.user_nivel == 'admin':
+    st.header("📝 Nova Ficha para Aluno")
+    alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     exs = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
     with st.form("ficha"):
-        aluno_id = st.selectbox("Para qual aluno?", alunos['nome'].tolist())
+        aluno_nome = st.selectbox("Para qual aluno?", alunos['nome'].tolist())
         t_nome = st.selectbox("Treino", ["Treino A", "Treino B", "Treino C", "Treino D"])
         ex_nome = st.selectbox("Exercício", exs['nome'].tolist())
         c1, c2 = st.columns(2)
@@ -106,7 +114,7 @@ elif menu == "📝 Montar Treino":
         dias = st.slider("Validade da ficha (dias)", 30, 90, 60)
         
         if st.form_submit_button("Adicionar à Ficha"):
-            id_a = alunos[alunos['nome'] == aluno_id]['id'].values[0]
+            id_a = alunos[alunos['nome'] == aluno_nome]['id'].values[0]
             id_e = exs[exs['nome'] == ex_nome]['id'].values[0]
             dt_venc = datetime.now().date() + timedelta(days=dias)
             with engine.begin() as conn:
@@ -114,24 +122,24 @@ elif menu == "📝 Montar Treino":
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, data_vencimento)
                     VALUES (:u, :t, :e, :s, :r, :v)
                 """), {"u": int(id_a), "t": t_nome, "e": int(id_e), "s": ser, "r": rep, "v": dt_venc})
-            st.success("Exercício adicionado com sucesso!")
+            st.success(f"Exercício adicionado à ficha de {aluno_nome}!")
 
-# --- 3. BIBLIOTECA ---
-elif menu == "⚙️ Biblioteca":
-    st.header("📚 Biblioteca de Exercícios")
+# --- 3. BIBLIOTECA (Acesso Admin) ---
+elif menu == "⚙️ Biblioteca" and st.session_state.user_nivel == 'admin':
+    st.header("📚 Gerenciar Biblioteca")
     with st.form("add_lib", clear_on_submit=True):
         n = st.text_input("Nome do Exercício")
         g = st.selectbox("Grupo", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen"])
         img_url = st.text_input("URL da Imagem (GIF ou JPG)")
-        if st.form_submit_button("Salvar"):
+        if st.form_submit_button("Salvar Exercício"):
             with engine.begin() as conn:
                 conn.execute(text("INSERT INTO exercicios_biblioteca (nome, grupo_muscular, url_imagem) VALUES (:n, :g, :i)"),
                              {"n": n, "g": g, "i": img_url})
-            st.success("Cadastrado!")
+            st.success("Cadastrado na biblioteca global!")
 
-# --- 4. GESTÃO DE USUÁRIOS ---
-elif menu == "🛡️ Gestão de Usuários":
-    st.header("👥 Alunos")
+# --- 4. GESTÃO DE USUÁRIOS (Acesso Admin) ---
+elif menu == "🛡️ Gestão de Usuários" and st.session_state.user_nivel == 'admin':
+    st.header("👥 Alunos Cadastrados")
     with st.form("cad_user", clear_on_submit=True):
         n = st.text_input("Nome Completo")
         em = st.text_input("Email")
@@ -143,4 +151,8 @@ elif menu == "🛡️ Gestão de Usuários":
                 conn.execute(text("INSERT INTO usuarios (nome, email, username, senha, nivel) VALUES (:n, :em, :u, :s, 'user')"),
                              {"n":n, "em":em, "u":us_l, "s":se})
             enviar_email_cadastro(n, em, us_l, se)
-            st.success("Aluno cadastrado!")
+            st.success(f"Aluno {n} cadastrado e notificado!")
+    
+    st.divider()
+    df_lista = pd.read_sql("SELECT nome, username, email FROM usuarios WHERE nivel = 'user'", engine)
+    st.table(df_lista)
