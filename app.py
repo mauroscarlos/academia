@@ -129,25 +129,37 @@ elif menu == "📝 Montar Treino":
         if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
             id_ex1 = int(bib[bib['nome'] == ex1]['id'].values[0])
             
+            # Garantimos que o 'cb' seja o NOME do exercício ou None
+            exercicio_biset = ex2 if ex2_check == "Sim" else None
+            
             with engine.begin() as conn:
-                # Salva o Primeiro
+                # 1. Salva o Primeiro Exercício
                 conn.execute(text("""
-                    INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, exercicio_combinado_id) 
-                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :cb)
-                """), {"u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "cb": ex2 if ex2_check == "Sim" else None})
+                    INSERT INTO fichas_treino 
+                    (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
+                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
+                """), {
+                    "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, 
+                    "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, 
+                    "tm": tipo, "cb": exercicio_biset
+                })
                 
-                # Se for Bi-set, salva o Segundo imediatamente
+                # 2. Se for Bi-set, salva o Segundo imediatamente
                 if ex2_check == "Sim":
                     id_ex2 = int(bib[bib['nome'] == ex2]['id'].values[0])
                     conn.execute(text("""
-                        INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso) 
-                        VALUES (:u, :t, :e, :s, :r, :cg, :td)
-                    """), {"u": id_al, "t": tr_sel, "e": id_ex2, "s": series, "r": reps2, "cg": carga, "td": descanso})
+                        INSERT INTO fichas_treino 
+                        (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
+                        VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
+                    """), {
+                        "u": id_al, "t": tr_sel, "e": id_ex2, "s": series, "r": reps2, 
+                        "cg": carga, "td": descanso, "tm": tipo, "cb": None
+                    })
             
             st.session_state.form_token += 1
-            st.success("Exercícios salvos!")
-            time.sleep(1); st.rerun()
-
+            st.success("Exercícios salvos com sucesso!")
+            time.sleep(1)
+            st.rerun()
     st.divider()
     df_ficha = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
     if not df_ficha.empty:
