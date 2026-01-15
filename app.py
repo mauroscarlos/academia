@@ -165,7 +165,7 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO (VERSÃO CORRIGIDA E SEM ERROS DE NOME) ---
+# --- 3. MONTAR TREINO (COM OPÇÃO DE EXCLUIR FICHA COMPLETA) ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever e Editar Treino")
     
@@ -174,15 +174,13 @@ elif menu == "📝 Montar Treino":
     alunos_df = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     biblioteca_df = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
-    # Seletores fora do formulário (Eles mandam na atualização da página)
+    # Seletores fora do formulário
     col_al, col_tr = st.columns(2)
     aluno_escolhido = col_al.selectbox("Selecione o Aluno:", alunos_df['nome'].tolist())
     id_aluno_atual = int(alunos_df[alunos_df['nome'] == aluno_escolhido]['id'].values[0])
-    
-    # Aqui definimos a variável 'nome_do_treino' que será usada em todo o bloco
     nome_do_treino = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
 
-    # 2. Busca exercícios já salvos no banco (para o Bi-set)
+    # 2. Busca exercícios já salvos no banco
     with engine.connect() as conn:
         query_check = text("""
             SELECT f.id, e.nome 
@@ -196,13 +194,9 @@ elif menu == "📝 Montar Treino":
     # 3. FORMULÁRIO DE CADASTRO
     if 'reset_trigger' not in st.session_state: st.session_state.reset_trigger = 0
 
-    # A chave do form garante que ele limpe após salvar
-    with st.form(key=f"form_v10_{id_aluno_atual}_{nome_do_treino}_{st.session_state.reset_trigger}"):
+    with st.form(key=f"form_v11_{id_aluno_atual}_{nome_do_treino}_{st.session_state.reset_trigger}"):
         st.subheader(f"Adicionar ao {nome_do_treino}")
-        
         ex_base = st.selectbox("1. Escolha o Exercício:", biblioteca_df['nome'].tolist())
-        
-        # LISTA DE COMBINAÇÃO
         opcoes_bi_set = ["Não"] + exercicios_na_ficha['nome'].tolist()
         combinar_com = st.selectbox("2. Combinar com (Bi-set):", opcoes_bi_set)
         
@@ -214,13 +208,10 @@ elif menu == "📝 Montar Treino":
         col_cg, col_ds = st.columns(2)
         carga_v = col_cg.text_input("Carga (kg)", "10")
         descanso_v = col_ds.number_input("Descanso (s)", 0, 300, 60)
-        
         obs_v = st.text_area("Observações")
         
         if st.form_submit_button("✅ SALVAR EXERCÍCIO"):
             id_ex_modelo = int(biblioteca_df[biblioteca_df['nome'] == ex_base]['id'].values[0])
-            
-            # Pega o ID do exercício que já está na ficha para o vínculo
             id_vinculo = None
             if combinar_com != "Não":
                 try:
@@ -231,18 +222,12 @@ elif menu == "📝 Montar Treino":
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
-                """), {
-                    "u": id_aluno_atual, "t": nome_do_treino, "e": id_ex_modelo, 
-                    "s": series_v, "r": meta_v, "cg": carga_v, "td": descanso_v, 
-                    "tm": tipo_m, "ob": obs_v, "cb": id_vinculo
-                })
+                """), {"u": id_aluno_atual, "t": nome_do_treino, "e": id_ex_modelo, "s": series_v, "r": meta_v, "cg": carga_v, "td": descanso_v, "tm": tipo_m, "ob": obs_v, "cb": id_vinculo})
             
             st.session_state.reset_trigger += 1
-            st.success("Salvo com sucesso!")
-            time.sleep(0.5)
             st.rerun()
 
-    # 4. TABELA DE CONFERÊNCIA E EXCLUSÃO (Para garantir que você veja os nomes)
+    # 4. TABELA DE CONFERÊNCIA E EXCLUSÃO
     st.divider()
     st.subheader(f"📋 Exercícios atuais no {nome_do_treino}")
     if not exercicios_na_ficha.empty:
@@ -252,6 +237,19 @@ elif menu == "📝 Montar Treino":
             if col2.button("🗑️", key=f"del_final_{r['id']}"):
                 with engine.begin() as conn:
                     conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
+                st.rerun()
+        
+        # --- NOVO: BOTÃO PARA EXCLUIR TREINO COMPLETO ---
+        st.write("---")
+        with st.expander("⚠️ ZONA DE PERIGO: Excluir Treino Completo"):
+            st.warning(f"Isso apagará TODOS os exercícios do **{nome_do_treino}** de **{aluno_escolhido}**.")
+            confirmar = st.checkbox("Eu entendo que esta ação não pode ser desfeita.")
+            if st.button(f"🔥 APAGAR {nome_do_treino.upper()} AGORA", type="primary", disabled=not confirmar):
+                with engine.begin() as conn:
+                    conn.execute(text("DELETE FROM fichas_treino WHERE usuario_id = :u AND treino_nome = :t"),
+                                 {"u": id_aluno_atual, "t": nome_do_treino})
+                st.success("Ficha excluída!")
+                time.sleep(1)
                 st.rerun()
     else:
         st.info("Nenhum exercício neste treino.")
