@@ -169,27 +169,40 @@ elif menu == "🏋️ Treinar Agora":
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever Treino")
     
-    # BUSCA ATUALIZADA: Garante que exercícios novos apareçam na lista
+    # 1. BUSCA GERAL (Biblioteca e Alunos) - Fora do form para atualizar sempre
     alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
-    exs = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
+    exs_biblioteca = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
-    if exs.empty:
-        st.info("⚠️ A biblioteca está vazia. Cadastre exercícios primeiro.")
-        st.stop()
-
     if 'form_count' not in st.session_state: st.session_state.form_count = 0
+
+    # Seletores fora do formulário para que a lista de "Combinar" atualize dinamicamente
+    col_al, col_tr = st.columns(2)
+    aluno_sel = col_al.selectbox("Selecione o Aluno:", alunos['nome'].tolist())
+    id_aluno = alunos[alunos['nome'] == aluno_sel]['id'].values[0]
     
+    t_nome = col_tr.selectbox("Selecione o Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
+
+    # 2. BUSCA EXERCÍCIOS JÁ LANÇADOS (Para a lista de Bi-set)
+    # Esta query é o segredo: ela pega o que já existe na ficha desse aluno agora
+    query_bi_set = text("""
+        SELECT f.id, e.nome 
+        FROM fichas_treino f 
+        JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+        WHERE f.usuario_id = :u AND f.treino_nome = :t
+        ORDER BY f.id DESC
+    """)
+    atuais_na_ficha = pd.read_sql(query_bi_set, engine, params={"u": int(id_aluno), "t": t_nome})
+
+    # 3. FORMULÁRIO DE CADASTRO
     with st.form(key=f"montar_{st.session_state.form_count}"):
-        aluno_sel = st.selectbox("Aluno", alunos['nome'].tolist())
-        id_aluno = alunos[alunos['nome'] == aluno_sel]['id'].values[0]
-        t_nome = st.selectbox("Treino", ["Treino A", "Treino B", "Treino C", "Treino D"])
+        st.markdown(f"**Adicionando ao {t_nome} de {aluno_sel}**")
         
-        # Busca exercícios já na ficha para permitir o Bi-set (combinado)
-        atuais = pd.read_sql(text("SELECT f.id, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t"), 
-                             engine, params={"u": int(id_aluno), "t": t_nome})
+        # Seletor do exercício que vem da BIBLIOTECA
+        ex_sel = st.selectbox("Qual exercício adicionar?", exs_biblioteca['nome'].tolist())
         
-        ex_sel = st.selectbox("Exercício", exs['nome'].tolist())
-        combinar = st.selectbox("Combinar com anterior (Bi-set)?", ["Não"] + atuais['nome'].tolist())
+        # Seletor de COMBINAÇÃO (Bi-set) - Aqui aparecem os que já estão na ficha
+        combinar = st.selectbox("Combinar com exercício que já está na ficha? (Bi-set)", 
+                                 ["Não"] + atuais_na_ficha['nome'].tolist())
         
         c1, c2, c3 = st.columns(3)
         tipo = c1.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"])
@@ -200,22 +213,35 @@ elif menu == "📝 Montar Treino":
         cg = col_c.text_input("Carga (kg)", "10")
         desc = col_d.number_input("Descanso (s)", 0, 300, 60)
         
-        obs = st.text_area("Observações para o aluno")
+        obs = st.text_area("Observações (Ex: Drop-set na última série)")
         
-        if st.form_submit_button("✅ Adicionar à Ficha"):
-            id_ex = exs[exs['nome'] == ex_sel]['id'].values[0]
-            id_comb = atuais[atuais['nome'] == combinar]['id'].values[0] if combinar != "Não" else None
+        if st.form_submit_button("✅ Salvar na Ficha"):
+            id_ex_base = exs_biblioteca[exs_biblioteca['nome'] == ex_sel]['id'].values[0]
+            
+            # Pega o ID do exercício da FICHA para combinar (e não da biblioteca)
+            id_comb_ficha = atuais_na_ficha[atuais_na_ficha['nome'] == combinar]['id'].values[0] if combinar != "Não" else None
             
             with engine.begin() as conn:
                 conn.execute(text("""
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
-                """), {"u":int(id_aluno), "t":t_nome, "e":int(id_ex), "s":ser, "r":rep, "cg":cg, "td":desc, "tm":tipo, "ob":obs, "cb":id_comb})
+                """), {
+                    "u": int(id_aluno), "t": t_nome, "e": int(id_ex_base), "s": ser, "r": rep, 
+                    "cg": cg, "td": desc, "tm": tipo, "ob": obs, "cb": id_comb_ficha
+                })
             
-            st.session_state.form_count += 1 # Reseta o formulário
-            st.success(f"Adicionado: {ex_sel}")
+            st.session_state.form_count += 1
+            st.success(f"'{ex_sel}' adicionado com sucesso!")
             time.sleep(1)
             st.rerun()
+
+    # 4. TABELA DE CONFERÊNCIA (Opcional, mas ajuda muito)
+    st.divider()
+    st.subheader(f"📋 Resumo do {t_nome}")
+    if not atuais_na_ficha.empty:
+        st.dataframe(atuais_na_ficha[['nome']], use_container_width=True)
+    else:
+        st.info("Nenhum exercício neste treino ainda.")
 
 # --- 4. BIBLIOTECA ---
 elif menu == "⚙️ Biblioteca":
