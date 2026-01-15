@@ -6,31 +6,26 @@ from datetime import datetime
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SGF Treino - Gestão de Academia", layout="wide", page_icon="💪")
 
-# --- FUNÇÃO DE CONEXÃO REVISADA ---
+# --- FUNÇÃO DE CONEXÃO REVISADA (PARA EVITAR ERROS DE CARACTERES ESPECIAIS) ---
 @st.cache_resource
 def get_engine():
-    # Puxa os dados das secrets separadamente (conforme configuramos no último passo)
-    creds = st.secrets["connections"]["postgresql"]
-    
-    # Monta a URL de forma segura
-    user = creds['username']
-    pw = creds['password']
-    host = creds['host']
-    port = creds['port']
-    db = creds['database']
-    
-    conn_url = f"postgresql://{user}:{pw}@{host}:{port}/{db}?pgbouncer=true"
-    
-    return create_engine(conn_url, pool_pre_ping=True)
+    try:
+        creds = st.secrets["connections"]["postgresql"]
+        user = creds['username']
+        pw = creds['password']
+        host = creds['host']
+        port = creds['port']
+        db = creds['database']
+        
+        # Montagem da URL com Connection Pooling
+        conn_url = f"postgresql://{user}:{pw}@{host}:{port}/{db}?pgbouncer=true"
+        return create_engine(conn_url, pool_pre_ping=True)
+    except Exception as e:
+        st.error(f"Erro ao ler credenciais: {e}")
+        st.stop()
 
-try:
-    engine = get_engine()
-except Exception as e:
-    st.error(f"Erro crítico na conexão: {e}")
-    st.stop()
-
-# ESTA LINHA É ESSENCIAL: Ela cria a variável que o restante do código usa
-# engine = get_engine()
+# CRIAÇÃO DA VARIÁVEL GLOBAL ENGINE
+engine = get_engine()
 
 # --- ESTILIZAÇÃO CSS ---
 st.markdown("""
@@ -60,22 +55,25 @@ if not st.session_state.logado:
         senha_input = st.text_input("Senha", type="password")
         
         if st.form_submit_button("Entrar"):
-            # Limpa o input do usuário
             u_limpo = u_input.lower().strip()
-            query = text("SELECT * FROM usuarios WHERE username = :u AND senha = :s")
-            user_df = pd.read_sql(query, engine, params={"u": u_limpo, "s": senha_input})
-            
-            if not user_df.empty:
-                if user_df.iloc[0]['status'] == 'bloqueado':
-                    st.error("❌ Conta bloqueada.")
+            try:
+                query = text("SELECT * FROM usuarios WHERE username = :u AND senha = :s")
+                user_df = pd.read_sql(query, engine, params={"u": u_limpo, "s": senha_input})
+                
+                if not user_df.empty:
+                    if user_df.iloc[0]['status'] == 'bloqueado':
+                        st.error("❌ Conta bloqueada pelo administrador.")
+                    else:
+                        st.session_state.logado = True
+                        st.session_state.user_id = int(user_df.iloc[0]['id'])
+                        st.session_state.user_nome = user_df.iloc[0]['nome']
+                        st.session_state.user_nivel = user_df.iloc[0]['nivel']
+                        st.rerun()
                 else:
-                    st.session_state.logado = True
-                    st.session_state.user_id = int(user_df.iloc[0]['id'])
-                    st.session_state.user_nome = user_df.iloc[0]['nome']
-                    st.session_state.user_nivel = user_df.iloc[0]['nivel']
-                    st.rerun()
-            else:
-                st.error("Usuário ou senha incorretos.")
+                    st.error("Usuário ou senha incorretos.")
+            except Exception as e:
+                st.error(f"Erro ao conectar com a tabela de usuários: {e}")
+                st.info("Dica: Verifique se você criou a tabela 'usuarios' no SQL Editor do Supabase.")
     st.stop()
 
 # --- INTERFACE PRINCIPAL (PÓS-LOGIN) ---
@@ -101,32 +99,33 @@ if menu == "🏋️ Treinar Agora":
         JOIN exercicios_biblioteca e ON f.exercicio_id = e.id
         WHERE f.usuario_id = :u AND f.treino_nome = :t
     """)
-    df = pd.read_sql(query, engine, params={"u": st.session_state.user_id, "t": treino_selecionado})
-    
-    if df.empty:
-        st.info(f"Você ainda não tem exercícios cadastrados no {treino_selecionado}.")
-    else:
-        for idx, row in df.iterrows():
-            with st.container():
-                st.markdown(f"""
-                    <div class="card-treino">
-                        <div style="font-size: 1.2rem; font-weight: bold;">{row['nome']}</div>
-                        <div>{row['grupo_muscular']} | {row['series']} séries de {row['repeticoes']}</div>
-                        <div style="color: #ff4b4b; font-weight: bold;">Carga Atual: {row['carga_atual']}</div>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Input de carga rápida
-                nova_carga = st.text_input("Ajustar Peso (kg)", value=row['carga_atual'], key=f"c_{row['id']}")
-                if nova_carga != row['carga_atual']:
-                    with engine.begin() as conn:
-                        conn.execute(text("UPDATE fichas_treino SET carga_atual = :c WHERE id = :id"), {"c": nova_carga, "id": row['id']})
-                st.divider()
+    try:
+        df = pd.read_sql(query, engine, params={"u": st.session_state.user_id, "t": treino_selecionado})
+        
+        if df.empty:
+            st.info(f"Nenhum exercício cadastrado no {treino_selecionado}.")
+        else:
+            for idx, row in df.iterrows():
+                with st.container():
+                    st.markdown(f"""
+                        <div class="card-treino">
+                            <div style="font-size: 1.2rem; font-weight: bold;">{row['nome']}</div>
+                            <div>{row['grupo_muscular']} | {row['series']} séries de {row['repeticoes']}</div>
+                            <div style="color: #ff4b4b; font-weight: bold;">Peso: {row['carga_atual']} kg</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                    
+                    nova_carga = st.text_input("Ajustar Peso (kg)", value=row['carga_atual'], key=f"c_{row['id']}")
+                    if nova_carga != row['carga_atual']:
+                        with engine.begin() as conn:
+                            conn.execute(text("UPDATE fichas_treino SET carga_atual = :c WHERE id = :id"), {"c": nova_carga, "id": row['id']})
+                    st.divider()
+    except:
+        st.warning("Configure sua ficha na aba 'Montar Treino'.")
 
 # --- 2. MONTAR TREINO ---
 elif menu == "📝 Montar Treino":
     st.header("📝 Configurar Ficha")
-    
     try:
         exs_df = pd.read_sql("SELECT * FROM exercicios_biblioteca ORDER BY nome", engine)
         
@@ -145,23 +144,23 @@ elif menu == "📝 Montar Treino":
                         INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual)
                         VALUES (:u, :tn, :ei, :s, :r, :c)
                     """), {"u": st.session_state.user_id, "tn": t_nome, "ei": ex_id, "s": ser, "r": rep, "c": carga})
-                st.success("Adicionado!")
+                st.success("Exercício adicionado!")
                 st.rerun()
     except:
-        st.error("Biblioteca de exercícios vazia ou erro no banco.")
+        st.error("Biblioteca vazia. Cadastre exercícios na aba 'Biblioteca' primeiro.")
 
 # --- 3. BIBLIOTECA ---
 elif menu == "⚙️ Biblioteca":
-    st.header("📚 Biblioteca Global")
+    st.header("📚 Biblioteca de Exercícios")
     with st.form("form_lib", clear_on_submit=True):
         n_ex = st.text_input("Nome do Exercício")
         g_ex = st.selectbox("Grupo Muscular", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen"])
-        if st.form_submit_button("Salvar Exercício"):
+        if st.form_submit_button("Salvar na Biblioteca"):
             if n_ex:
                 with engine.begin() as conn:
                     conn.execute(text("INSERT INTO exercicios_biblioteca (nome, grupo_muscular) VALUES (:n, :g)"), {"n": n_ex, "g": g_ex})
-                st.success("Salvo!")
-            else: st.error("Dê um nome ao exercício.")
+                st.success("Exercício salvo!")
+            else: st.error("O nome é obrigatório.")
 
 # --- 4. GESTÃO DE USUÁRIOS (ADMIN) ---
 elif menu == "🛡️ Gestão de Usuários":
@@ -188,6 +187,9 @@ elif menu == "🛡️ Gestão de Usuários":
                     st.rerun()
 
     st.divider()
-    df_users = pd.read_sql("SELECT id, nome, username, status FROM usuarios ORDER BY nome", engine)
-    st.write("### Lista de Alunos")
-    st.dataframe(df_users, use_container_width=True)
+    try:
+        df_users = pd.read_sql("SELECT id, nome, username, status FROM usuarios ORDER BY nome", engine)
+        st.write("### Lista de Alunos")
+        st.dataframe(df_users, use_container_width=True)
+    except:
+        st.info("Tabela de usuários não encontrada no banco.")
