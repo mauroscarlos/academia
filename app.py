@@ -6,16 +6,25 @@ from datetime import datetime
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="SGF Treino - Gestão de Academia", layout="wide", page_icon="💪")
 
-# --- CONEXÃO COM O SUPABASE ---
+# --- FUNÇÃO DE CONEXÃO REVISADA ---
 @st.cache_resource
 def get_engine():
-    # Puxa os dados das secrets separadamente
+    # Puxa os dados das secrets separadamente (conforme configuramos no último passo)
     creds = st.secrets["connections"]["postgresql"]
     
-    # Monta a URL de forma segura (com suporte a caracteres especiais na senha)
-    conn_url = f"postgresql://{creds['username']}:{creds['password']}@{creds['host']}:{creds['port']}/{creds['database']}?pgbouncer=true"
+    # Monta a URL de forma segura
+    user = creds['username']
+    pw = creds['password']
+    host = creds['host']
+    port = creds['port']
+    db = creds['database']
+    
+    conn_url = f"postgresql://{user}:{pw}@{host}:{port}/{db}?pgbouncer=true"
     
     return create_engine(conn_url, pool_pre_ping=True)
+
+# ESTA LINHA É ESSENCIAL: Ela cria a variável que o restante do código usa
+engine = get_engine()
 
 # --- ESTILIZAÇÃO CSS ---
 st.markdown("""
