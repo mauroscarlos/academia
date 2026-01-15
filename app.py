@@ -54,47 +54,29 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- EXPORTAÇÃO DEFINITIVA (HTML FORMAT) ---
-        df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
+        # --- EXPORTAÇÃO "PEGA E LEVA" (ÁREA DE TRANSFERÊNCIA) ---
+        df_ex = pd.read_sql(text("SELECT f.*, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
-            with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
-                st.markdown(f"### 📋 Resumo: {t_sel}")
+            with st.expander("📲 COPIAR TREINO PARA WHATSAPP / NOTAS"):
+                # Montando o texto com hifens e organização visual
+                texto_para_copiar = f"🏋️ TREINO: {t_sel}\n"
+                texto_para_copiar += "---------------------------------\n"
                 
-                # 1. Preparando os dados limpos
-                df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
-                df_export.columns = ['Exercício', 'Séries', 'Reps', 'Descanso']
+                for _, r in df_ex.iterrows():
+                    # Formato: Exercício - Séries - Reps - Descanso
+                    linha = f"🔹 {r['nome']} - {r['series']}x - {r['repeticoes']} - {r['tempo_descanso']}s\n"
+                    texto_para_copiar += linha
+                
+                texto_para_copiar += "---------------------------------\n"
+                texto_para_copiar += "💪 Foco no treino! Gerado por SGF Elite."
 
-                # 2. Criando um HTML que o Excel entende como Planilha
-                # O segredo aqui é o 'mso-number-format:"\@"' que trava como TEXTO no Excel
-                html_style = """
-                <style>
-                    table { border-collapse: collapse; font-family: sans-serif; }
-                    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-                    th { background-color: #eee; }
-                    .reps-text { mso-number-format:"\\@"; }
-                </style>
-                """
+                st.markdown("Clique no botão à direita do quadro abaixo para copiar:")
                 
-                html_body = f"<h2>Treino: {t_sel}</h2>"
-                html_body += "<table><thead><tr><th>Exercício</th><th>Séries</th><th>Reps</th><th>Descanso</th></tr></thead><tbody>"
+                # O st.code já vem com botão de cópia automático no Streamlit
+                st.code(texto_para_copiar, language=None)
                 
-                for _, r in df_export.iterrows():
-                    html_body += f"<tr><td>{r['Exercício']}</td><td>{r['Séries']}</td><td class='reps-text'>{r['Reps']}</td><td>{r['Descanso']}s</td></tr>"
-                
-                html_body += "</tbody></table>"
-                
-                # Juntamos tudo com o cabeçalho de acentuação UTF-8 para o Excel
-                html_final = f"<html><head><meta charset='utf-8'></head><body>{html_style}{html_body}</body></html>"
-
-                st.download_button(
-                    label="📥 BAIXAR FICHA PARA EXCEL (Formato Garantido)",
-                    data=html_final,
-                    file_name=f'Treino_{t_sel}.xls', # Salvamos como .xls para o Excel assumir o controle
-                    mime='application/vnd.ms-excel',
-                    use_container_width=True
-                )
-                st.info("💡 Ao abrir, o Excel pode dar um aviso de formato. Pode clicar em 'Sim', ele abrirá perfeito com acentos e colunas!")
+                st.caption("✅ Depois de copiar, basta 'Colar' na conversa do seu WhatsApp.")
 
         st.divider()
 
