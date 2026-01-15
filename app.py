@@ -150,30 +150,42 @@ elif menu == "📝 Montar Treino":
         
         st.divider()
 
-        # --- LINHA ÚNICA DINÂMICA ---
-        # Definimos o rótulo dinâmico baseado na escolha do Tipo
-        tipo_meta_v = st.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-        label_dinamico = "Tempo" if tipo_meta_v == "Tempo (s)" else "Reps"
+        # --- CONFIGURAÇÃO DE SÉRIES E TIPO ---
+        c_tipo, c_ser, c_desc, c_carga = st.columns([2, 1, 1, 1])
+        tipo_meta_v = c_tipo.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
+        series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
+        descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+        carga = c_carga.text_input("Carga (Kg)", "10", key=f"cg_{st.session_state.form_token}")
 
-        if ex2_check == "Sim":
-            # Layout para Bi-set: Tipo (acima) + Linha compacta (Séries, R1, R2, Descanso, Carga)
-            c_ser, c_r1, c_r2, c_desc, c_carga = st.columns([1, 1.5, 1.5, 1, 1])
+        # --- LÓGICA DE REPS DINÂMICAS (PIRÂMIDE OU SIMPLES) ---
+        label_dinamico = "Tempo" if tipo_meta_v == "Tempo (s)" else "Reps"
+        
+        final_reps1 = ""
+        final_reps2 = ""
+
+        if tipo_meta_v == "Pirâmide":
+            st.write(f"📊 **Configurar Pirâmide para: {ex1}**")
+            cols_p1 = st.columns(series)
+            reps_list1 = []
+            for i in range(series):
+                r_val = cols_p1[i].text_input(f"Série {i+1}", "12", key=f"p1_s{i}_{st.session_state.form_token}")
+                reps_list1.append(r_val)
+            final_reps1 = " - ".join(reps_list1) # Junta como: 12-10-8
             
-            series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            # Rótulos específicos para cada exercício no Bi-set
-            reps1 = c_r1.text_input(f"{label_dinamico} ({ex1.split()[0]})", "12", key=f"r1_{st.session_state.form_token}")
-            reps2 = c_r2.text_input(f"{label_dinamico} ({ex2.split()[0]})", "10", key=f"r2_{st.session_state.form_token}")
-            descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-            carga = c_carga.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+            if ex2_check == "Sim":
+                st.write(f"📊 **Configurar Pirâmide para: {ex2}**")
+                cols_p2 = st.columns(series)
+                reps_list2 = []
+                for i in range(series):
+                    r_val = cols_p2[i].text_input(f"Série {i+1}", "12", key=f"p2_s{i}_{st.session_state.form_token}")
+                    reps_list2.append(r_val)
+                final_reps2 = " - ".join(reps_list2)
         else:
-            # Layout para Exercício Simples: Séries, Reps/Tempo, Descanso, Carga
-            c_ser, c_rep, c_desc, c_carga = st.columns([1, 2, 1, 1])
-            
-            series = c_ser.number_input("Séries", 1, 12, 3, key=f"sr_{st.session_state.form_token}")
-            reps1 = c_rep.text_input(label_dinamico, "12", key=f"r1_{st.session_state.form_token}")
-            reps2 = "12" # Valor oculto
-            descanso = c_desc.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
-            carga = c_carga.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
+            # Layout Normal (Reps ou Tempo único)
+            r1_col, r2_col = st.columns(2)
+            final_reps1 = r1_col.text_input(f"{label_dinamico} ({ex1.split()[0]})", "12", key=f"r1_{st.session_state.form_token}")
+            if ex2_check == "Sim":
+                final_reps2 = r2_col.text_input(f"{label_dinamico} ({ex2.split()[0]})", "10", key=f"r2_{st.session_state.form_token}")
 
         st.write("") 
         if st.button("✅ SALVAR NA FICHA", use_container_width=True, type="primary"):
@@ -185,7 +197,7 @@ elif menu == "📝 Montar Treino":
                     INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                     VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                 """), {
-                    "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": reps1, 
+                    "u": id_al, "t": tr_sel, "e": id_ex1, "s": series, "r": final_reps1, 
                     "cg": carga, "td": 0 if ex2_check == "Sim" else descanso, "tm": tipo_meta_v, "cb": ex2 if ex2_check == "Sim" else None
                 })
                 
@@ -196,13 +208,12 @@ elif menu == "📝 Montar Treino":
                         INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
                         VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
                     """), {
-                        "u": id_al, "t": tr_sel, "e": id_ex2, "s": series, "r": reps2, 
+                        "u": id_al, "t": tr_sel, "e": id_ex2, "s": series, "r": final_reps2 if final_reps2 else final_reps1, 
                         "cg": carga, "td": descanso, "tm": tipo_meta_v, "cb": None
                     })
             
-            # Reset do formulário
             st.session_state.form_token += 1
-            st.success("Salvo com sucesso!")
+            st.success("Pirâmide salva com sucesso!")
             time.sleep(1)
             st.rerun()
 
