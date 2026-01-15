@@ -36,21 +36,37 @@ if not st.session_state.logado:
             else: st.error("Acesso negado.")
     st.stop()
 
-# --- MENU LATERAL ---
 with st.sidebar:
     st.title("SGF Elite")
-    menu = st.radio("Navegação", ["🏋️ Treinar Agora", "⚙️ Treinos", "📊 Relatórios", "🚪 Sair"])
+    st.write(f"👤 {st.session_state.user_nome}")
+    
+    # Lista de menus baseada no nível de acesso
+    opcoes_menu = ["🏋️ Treinar Agora", "📊 Relatórios"]
+    
+    # SÓ ADICIONA "TREINOS" SE FOR ADMIN
+    if st.session_state.user_nivel == "admin":
+        opcoes_menu.insert(1, "⚙️ Treinos")
+    
+    menu = st.radio("Navegação", opcoes_menu)
+    
+    st.divider()
+    
+    # --- BOTÃO DE SAIR REAL (FORA DA SELEÇÃO) ---
+    if st.button("🚪 Sair do Sistema", use_container_width=True):
+        st.session_state.clear()
+        st.rerun()
 
-# --- 🚪 SAIR ---
-if menu == "🚪 Sair":
-    st.session_state.clear()
-    st.rerun()
+# --- LÓGICA DE EXIBIÇÃO ---
 
-# --- ⚙️ GESTÃO DE TREINOS (ADMIN) ---
-elif menu == "⚙️ Treinos":
+# 1. GESTÃO DE TREINOS (PROTEGIDA)
+if menu == "⚙️ Treinos":
+    if st.session_state.user_nivel != "admin":
+        st.error("Acesso negado. Esta área é apenas para professores.")
+        st.stop()
+    
     st.header("⚙️ Gestão de Treinos")
     tab_montar, tab_editar = st.tabs(["🆕 Montar Novo Treino", "✏️ Editar/Reordenar Treinos"])
-
+    # ... (restante do código das abas que já tens)
     with tab_montar:
         st.subheader("📝 Prescrever Treino")
         st.cache_data.clear()
