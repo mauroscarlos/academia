@@ -165,45 +165,85 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO ---
+# --- 3. MONTAR TREINO
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever Treino")
-    if 'form_count' not in st.session_state: st.session_state.form_count = 0
+    
+    # BUSCA ATUALIZADA: Garante que exercícios novos apareçam na lista
     alunos = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     exs = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
+    
+    if exs.empty:
+        st.info("⚠️ A biblioteca está vazia. Cadastre exercícios primeiro.")
+        st.stop()
+
+    if 'form_count' not in st.session_state: st.session_state.form_count = 0
     
     with st.form(key=f"montar_{st.session_state.form_count}"):
         aluno_sel = st.selectbox("Aluno", alunos['nome'].tolist())
         id_aluno = alunos[alunos['nome'] == aluno_sel]['id'].values[0]
         t_nome = st.selectbox("Treino", ["Treino A", "Treino B", "Treino C", "Treino D"])
+        
+        # Busca exercícios já na ficha para permitir o Bi-set (combinado)
         atuais = pd.read_sql(text("SELECT f.id, e.nome FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t"), 
                              engine, params={"u": int(id_aluno), "t": t_nome})
+        
         ex_sel = st.selectbox("Exercício", exs['nome'].tolist())
-        combinar = st.selectbox("Combinar com anterior?", ["Não"] + atuais['nome'].tolist())
+        combinar = st.selectbox("Combinar com anterior (Bi-set)?", ["Não"] + atuais['nome'].tolist())
+        
         c1, c2, c3 = st.columns(3)
-        tipo, rep, ser = c1.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"]), c2.text_input("Meta", "12"), c3.number_input("Séries", 1, 10, 3)
-        cg, desc = st.text_input("Carga (kg)", "10"), st.number_input("Descanso (s)", 0, 300, 60)
-        obs = st.text_area("Observação")
+        tipo = c1.selectbox("Tipo de Meta", ["Repetições", "Tempo (s)", "Pirâmide"])
+        rep = c2.text_input("Meta (ex: 12-10-8 ou 45s)", "12")
+        ser = c3.number_input("Séries", 1, 10, 3)
+        
+        col_c, col_d = st.columns(2)
+        cg = col_c.text_input("Carga (kg)", "10")
+        desc = col_d.number_input("Descanso (s)", 0, 300, 60)
+        
+        obs = st.text_area("Observações para o aluno")
+        
         if st.form_submit_button("✅ Adicionar à Ficha"):
             id_ex = exs[exs['nome'] == ex_sel]['id'].values[0]
             id_comb = atuais[atuais['nome'] == combinar]['id'].values[0] if combinar != "Não" else None
+            
             with engine.begin() as conn:
-                conn.execute(text("""INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
-                                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)"""), 
-                                    {"u":int(id_aluno), "t":t_nome, "e":int(id_ex), "s":ser, "r":rep, "cg":cg, "td":desc, "tm":tipo, "ob":obs, "cb":id_comb})
-            st.session_state.form_count += 1; st.success("Adicionado!"); time.sleep(1); st.rerun()
+                conn.execute(text("""
+                    INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, observacao, exercicio_combinado_id)
+                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :ob, :cb)
+                """), {"u":int(id_aluno), "t":t_nome, "e":int(id_ex), "s":ser, "r":rep, "cg":cg, "td":desc, "tm":tipo, "ob":obs, "cb":id_comb})
+            
+            st.session_state.form_count += 1 # Reseta o formulário
+            st.success(f"Adicionado: {ex_sel}")
+            time.sleep(1)
+            st.rerun()
 
 # --- 4. BIBLIOTECA ---
 elif menu == "⚙️ Biblioteca":
     st.header("⚙️ Biblioteca de Exercícios")
+    
+    # Formulário de Cadastro
     with st.form("lib", clear_on_submit=True):
         n = st.text_input("Nome do Exercício")
-        g = st.selectbox("Grupo", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen"])
+        g = st.selectbox("Grupo Muscular", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen"])
         u = st.text_input("URL da Imagem/GIF")
-        if st.form_submit_button("Cadastrar"):
-            with engine.begin() as conn:
-                conn.execute(text("INSERT INTO exercicios_biblioteca (nome, grupo_muscular, url_imagem) VALUES (:n, :g, :u)"), {"n":n, "g":g, "u":u})
-            st.success("Salvo!")
+        
+        if st.form_submit_button("Cadastrar Exercício"):
+            if n:
+                with engine.begin() as conn:
+                    conn.execute(text("INSERT INTO exercicios_biblioteca (nome, grupo_muscular, url_imagem) VALUES (:n, :g, :u)"), 
+                                 {"n":n, "g":g, "u":u})
+                st.success(f"Exercício '{n}' salvo com sucesso!")
+                time.sleep(1)
+                st.rerun() # Isso força a atualização da lista em todas as abas
+            else:
+                st.error("O nome do exercício é obrigatório.")
+
+    st.divider()
+    st.subheader("Exercícios Cadastrados")
+    
+    # Busca e exibe a tabela de exercícios
+    df_biblioteca = pd.read_sql("SELECT nome, grupo_muscular as grupo FROM exercicios_biblioteca ORDER BY nome", engine)
+    st.dataframe(df_biblioteca, use_container_width=True)
 
 # --- 5. GESTÃO DE USUÁRIOS ---
 elif menu == "🛡️ Gestão de Usuários":
