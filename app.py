@@ -1,3 +1,4 @@
+import io
 import streamlit as st
 import pandas as pd
 from sqlalchemy import create_engine, text
@@ -58,22 +59,34 @@ if menu == "🏋️ Treinar Agora":
         
         if not df_ex.empty:
             with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
-                st.markdown(f"### 📋 Resumo do Treino: {t_sel}")
+                st.markdown(f"### 📋 Resumo: {t_sel}")
                 
-                tabela_html = "| Exercício | Séries x Reps | Descanso |\n| :--- | :--- | :--- |\n"
+                # Tabela visual na tela
+                tabela_html = "| Exercício | Séries | Reps | Descanso |\n| :--- | :--- | :--- | :--- |\n"
                 for _, r in df_ex.iterrows():
-                    tabela_html += f"| **{r['nome']}** | {r['series']}x {r['repeticoes']} | {r['tempo_descanso']}s |\n"
-                
+                    tabela_html += f"| **{r['nome']}** | {r['series']} | {r['repeticoes']} | {r['tempo_descanso']}s |\n"
                 st.markdown(tabela_html)
+                
                 st.divider()
+
+                # 1. Preparamos os dados apenas com o que você quer
+                # Renomeando as colunas para a exportação
+                df_export = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso']].copy()
+                df_export.columns = ['Exercício', 'Séries', 'Reps', 'Descanso']
+
+                # 2. MÁGICA PARA OS ACENTOS: Exportar como EXCEL (.xlsx)
+                import io
+                output = io.BytesIO()
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_export.to_excel(writer, index=False, sheet_name='Treino')
                 
-                csv_corrigido = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso', 'carga_atual']].to_csv(index=False, encoding='utf-8-sig', sep=';')
-                
+                excel_data = output.getvalue()
+
                 st.download_button(
-                    label="📥 BAIXAR PLANILHA PARA EXCEL",
-                    data=csv_corrigido,
-                    file_name=f'Treino_{t_sel}.csv',
-                    mime='text/csv',
+                    label="📥 BAIXAR FICHA PARA EXCEL (Sem erro de acento)",
+                    data=excel_data,
+                    file_name=f'Treino_{t_sel}.xlsx',
+                    mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     use_container_width=True
                 )
 
