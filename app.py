@@ -74,6 +74,59 @@ if st.session_state.user_nivel == 'admin':
 
 menu = st.sidebar.radio("Ir para:", opcoes)
 
+# --- 3. BIBLIOTECA DE EXERCÍCIOS (COM IMAGEM) ---
+elif menu == "⚙️ Biblioteca":
+    st.header("📚 Biblioteca de Exercícios")
+    
+    with st.expander("➕ Cadastrar Novo Exercício", expanded=False):
+        with st.form("form_lib", clear_on_submit=True):
+            n_ex = st.text_input("Nome do Exercício (Ex: Supino Reto)")
+            g_ex = st.selectbox("Grupo Muscular", ["Peito", "Costas", "Pernas", "Ombros", "Braços", "Abdomen", "Cardio", "Alongamento"])
+            url_img = st.text_input("URL da Imagem de Execução (opcional)", 
+                                    placeholder="Ex: https://exemplo.com/supino.jpg")
+            
+            if st.form_submit_button("Salvar Exercício"):
+                if n_ex:
+                    try:
+                        with engine.begin() as conn:
+                            conn.execute(text("""
+                                INSERT INTO exercicios_biblioteca (nome, grupo_muscular, url_imagem) 
+                                VALUES (:n, :g, :url)
+                            """), {"n": n_ex, "g": g_ex, "url": url_img if url_img else None})
+                        st.success("Exercício salvo na biblioteca!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar: {e}")
+                else: st.error("O nome do exercício é obrigatório.")
+
+    st.divider()
+    st.subheader("Exercícios Cadastrados")
+    
+    # Exibe os exercícios com a imagem
+    try:
+        df_exs = pd.read_sql("SELECT id, nome, grupo_muscular, url_imagem FROM exercicios_biblioteca ORDER BY nome", engine)
+        if not df_exs.empty:
+            for idx, row in df_exs.iterrows():
+                col_img, col_info = st.columns([1, 2])
+                with col_img:
+                    if row['url_imagem']:
+                        st.image(row['url_imagem'], width=100)
+                    else:
+                        st.image("https://via.placeholder.com/100?text=Sem+Imagem", width=100) # Imagem placeholder
+                with col_info:
+                    st.markdown(f"**{row['nome']}**")
+                    st.text(f"Grupo: {row['grupo_muscular']}")
+                    if st.button(f"Excluir {row['nome']}", key=f"del_ex_{row['id']}"):
+                        with engine.begin() as conn:
+                            conn.execute(text("DELETE FROM exercicios_biblioteca WHERE id = :id"), {"id": row['id']})
+                        st.success(f"Exercício '{row['nome']}' excluído.")
+                        st.rerun()
+                st.markdown("---")
+        else:
+            st.info("Nenhum exercício cadastrado ainda. Use o formulário acima para adicionar.")
+    except Exception as e:
+        st.error(f"Erro ao carregar exercícios: {e}")
+
 # --- 1. TREINAR AGORA ---
 if menu == "🏋️ Treinar Agora":
     st.header("🚀 Meu Treino")
