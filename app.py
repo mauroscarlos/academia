@@ -112,10 +112,11 @@ elif menu == "🏋️ Treinar Agora":
                                     p.metric("Descanso", f"{t_cnt}s"); time.sleep(1)
                                 p.success("VAI!")
 
-# --- 3. MONTAR TREINO ---
+# --- 3. MONTAR TREINO
 elif menu == "📝 Montar Treino":
     st.header("📝 Prescrever Treino")
     st.cache_data.clear()
+    
     alunos_df = pd.read_sql("SELECT id, nome FROM usuarios WHERE nivel = 'user' ORDER BY nome", engine)
     bib_df = pd.read_sql("SELECT id, nome FROM exercicios_biblioteca ORDER BY nome", engine)
     
@@ -124,33 +125,61 @@ elif menu == "📝 Montar Treino":
     id_al = int(alunos_df[alunos_df['nome'] == al_sel]['id'].values[0])
     tr_sel = col_tr.selectbox("Treino:", ["Treino A", "Treino B", "Treino C", "Treino D"])
 
-    lista_bib = bib_df['nome'].tolist()
+    # 1. BUSCA EXERCÍCIOS QUE JÁ ESTÃO NA FICHA (para servir de par na combinação)
+    df_fresca = pd.read_sql(text("""
+        SELECT f.id, e.nome FROM fichas_treino f 
+        JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+        WHERE f.usuario_id = :u AND f.treino_nome = :t
+    """), engine, params={"u": id_al, "t": tr_sel})
+
     if 'form_token' not in st.session_state: st.session_state.form_token = 0
 
     with st.container(border=True):
         st.subheader("Adicionar Exercício")
-        ex_p = st.selectbox("1. Exercício Principal:", lista_bib, key=f"ex_{st.session_state.form_token}")
-        comb = st.selectbox("2. Combinar com (Bi-set):", ["Não"] + lista_bib, key=f"cb_{st.session_state.form_token}")
+        ex_p = st.selectbox("1. Selecione o Exercício:", bib_df['nome'].tolist(), key=f"ex_{st.session_state.form_token}")
+        
+        # MUDANÇA AQUI: O seletor agora mostra o que já está na ficha para você "amarrar"
+        lista_combinar = ["Não (Exercício Simples)"] + df_fresca['nome'].tolist()
+        comb = st.selectbox("2. Combinar com (fazer logo após):", lista_combinar, key=f"cb_{st.session_state.form_token}")
+        
         c1, c2, c3 = st.columns(3)
         tipo = c1.selectbox("Tipo", ["Repetições", "Tempo (s)", "Pirâmide"], key=f"tp_{st.session_state.form_token}")
-        meta = c2.text_input("Meta", "12", key=f"mt_{st.session_state.form_token}")
+        meta = c2.text_input("Reps/Meta deste exercício", "12", key=f"mt_{st.session_state.form_token}")
         ser = c3.number_input("Séries", 1, 10, 3, key=f"sr_{st.session_state.form_token}")
-        cg = st.text_input("Carga", "10", key=f"cg_{st.session_state.form_token}")
-        ds = st.number_input("Descanso", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
         
-        if st.button("✅ SALVAR", use_container_width=True, type="primary"):
+        col_cg, col_ds = st.columns(2)
+        cg = col_cg.text_input("Carga (kg)", "10", key=f"cg_{st.session_state.form_token}")
+        ds = col_ds.number_input("Descanso (s) após este exercício", 0, 300, 60, key=f"ds_{st.session_state.form_token}")
+        
+        if st.button("✅ ADICIONAR EXERCÍCIO", use_container_width=True, type="primary"):
             id_ex = int(bib_df[bib_df['nome'] == ex_p]['id'].values[0])
+            valor_comb = None if "Não" in comb else comb
+            
             with engine.begin() as conn:
-                conn.execute(text("INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)"),
-                             {"u": id_al, "t": tr_sel, "e": id_ex, "s": ser, "r": meta, "cg": cg, "td": ds, "tm": tipo, "cb": comb if comb != "Não" else None})
-            st.session_state.form_token += 1; st.rerun()
+                conn.execute(text("""
+                    INSERT INTO fichas_treino (usuario_id, treino_nome, exercicio_id, series, repeticoes, carga_atual, tempo_descanso, tipo_meta, exercicio_combinado_id) 
+                    VALUES (:u, :t, :e, :s, :r, :cg, :td, :tm, :cb)
+                """), {"u": id_al, "t": tr_sel, "e": id_ex, "s": ser, "r": meta, "cg": cg, "td": ds, "tm": tipo, "cb": valor_comb})
+            
+            st.session_state.form_token += 1
+            st.rerun()
 
+    # --- LISTA DE VISUALIZAÇÃO ---
     st.divider()
-    df_f = pd.read_sql(text("SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": id_al, "t": tr_sel})
+    df_f = pd.read_sql(text("""
+        SELECT f.id, e.nome, f.repeticoes, f.exercicio_combinado_id 
+        FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+        WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC
+    """), engine, params={"u": id_al, "t": tr_sel})
+    
     if not df_f.empty:
+        st.subheader(f"📋 Exercícios na Ficha ({tr_sel})")
         for _, r in df_f.iterrows():
             c1, c2 = st.columns([4, 1])
-            c1.write(f"🔹 **{r['nome']}** - {r['repeticoes']} reps")
+            txt = f"🔹 **{r['nome']}** | {r['repeticoes']} reps"
+            if r['exercicio_combinado_id']:
+                txt += f" 🔗 (Combinado com {r['exercicio_combinado_id']})"
+            c1.write(txt)
             if c2.button("🗑️", key=f"del_{r['id']}"):
                 with engine.begin() as conn: conn.execute(text("DELETE FROM fichas_treino WHERE id = :id"), {"id": r['id']})
                 st.rerun()
