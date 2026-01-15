@@ -5,114 +5,85 @@ from datetime import datetime, timedelta
 import time
 import plotly.express as px
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="SGF Treino Elite", layout="wide", page_icon="💪")
+# ... (Mantenha suas funções get_engine e login como estão) ...
 
-@st.cache_resource
-def get_engine():
-    creds = st.secrets["connections"]["postgresql"]
-    url = f"postgresql://{creds['username']}:{creds['password']}@{creds['host']}:{creds['port']}/{creds['database']}"
-    return create_engine(url, pool_pre_ping=True)
+if st.session_state.logado:
+    # --- BARRA LATERAL ---
+    # (Mantenha sua lógica de busca de treinos aqui)
+    # ...
+    
+    # --- LÓGICA DO CRONÔMETRO GLOBAL ---
+    if 'treino_em_andamento' not in st.session_state:
+        st.session_state.treino_em_andamento = False
+    if 'inicio_treino' not in st.session_state:
+        st.session_state.inicio_treino = None
 
-engine = get_engine()
+    # --- ÁREA DE TREINO ---
+    if treino_selecionado and treino_selecionado != "Dashboard":
+        st.title(f"💪 {treino_selecionado}")
 
-# --- LOGIN (Estrutura padrão que já usamos) ---
-if 'logado' not in st.session_state:
-    st.session_state.logado = False
-
-if not st.session_state.logado:
-    st.title("🏋️ SGF Treino")
-    with st.form("login"):
-        u = st.text_input("Usuário (nome.sobrenome)").lower().strip()
-        s = st.text_input("Senha", type="password")
-        if st.form_submit_button("Entrar"):
-            df = pd.read_sql(text("SELECT * FROM usuarios WHERE username = :u AND senha = :s"), engine, params={"u":u, "s":s})
-            if not df.empty:
-                st.session_state.logado = True
-                st.session_state.user_id = int(df.iloc[0]['id'])
-                st.session_state.user_nome = df.iloc[0]['nome']
-                st.session_state.user_nivel = df.iloc[0]['nivel']
+        # BOTÃO INICIAR / STATUS DO TREINO
+        if not st.session_state.treino_em_andamento:
+            if st.button("🚀 INICIAR TREINO", use_container_width=True, type="primary"):
+                st.session_state.treino_em_andamento = True
+                st.session_state.inicio_treino = datetime.now()
                 st.rerun()
-            else: st.error("Acesso negado.")
-    st.stop()
+        else:
+            # Calcula tempo decorrido
+            tempo_decorrido = datetime.now() - st.session_state.inicio_treino
+            horas, resto = divmod(tempo_decorrido.seconds, 3600)
+            minutos, segundos = divmod(resto, 60)
+            
+            st.success(f"⏱️ Tempo de Treino: {horas:02d}:{minutos:02d}:{segundos:02d}")
+            
+            if st.button("🏁 ENCERRAR TREINO", use_container_width=True):
+                st.session_state.treino_finalizado = True # Gatilho para o modal ou mensagem
 
-# --- BARRA LATERAL DINÂMICA ---
-st.sidebar.title(f"👋 Olá, {st.session_state.user_nome.split()[0]}")
+        # Busca exercícios
+        query_ex = text("""
+            SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, e.url_imagem, f.tempo_descanso
+            FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
+            WHERE f.usuario_id = :u AND f.treino_nome = :t
+        """)
+        df_ex = pd.read_sql(query_ex, engine, params={"u": st.session_state.user_id, "t": treino_selecionado})
 
-# 1. Busca os treinos específicos deste aluno
-query_meus_treinos = text("SELECT DISTINCT treino_nome FROM fichas_treino WHERE usuario_id = :u")
-lista_treinos = pd.read_sql(query_meus_treinos, engine, params={"u": st.session_state.user_id})['treino_nome'].tolist()
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("📊 Evolução")
-aba_dashboard = st.sidebar.checkbox("Visualizar Dashboard", value=True)
-
-st.sidebar.subheader("📋 Meus Treinos")
-treino_selecionado = st.sidebar.radio("Selecione para abrir:", lista_treinos)
-
-if st.sidebar.button("Sair"):
-    st.session_state.clear()
-    st.rerun()
-
-# --- ÁREA CENTRAL ---
-
-# 1. DASHBOARD (Lado Esquerdo/Topo)
-if aba_dashboard:
-    st.title("📈 Minha Evolução")
-    # Dados simulados (Podemos criar tabela de histórico depois)
-    df_evolucao = pd.DataFrame({
-        "Data": pd.date_range(start="2026-01-01", periods=10),
-        "Carga Total (kg)": [1000, 1050, 1080, 1100, 1150, 1200, 1180, 1250, 1300, 1350]
-    })
-    
-    col_graf1, col_graf2 = st.columns(2)
-    with col_graf1:
-        fig1 = px.line(df_evolucao, x="Data", y="Carga Total (kg)", title="Progressão de Carga")
-        st.plotly_chart(fig1, use_container_width=True)
-    with col_graf2:
-        fig2 = px.bar(df_evolucao, x="Data", y="Carga Total (kg)", title="Volume por Sessão")
-        st.plotly_chart(fig2, use_container_width=True)
-    st.divider()
-
-# 2. CONTEÚDO DO TREINO
-if treino_selecionado:
-    st.title(f"💪 {treino_selecionado}")
-    
-    query_exercicios = text("""
-        SELECT f.id, e.nome, f.series, f.repeticoes, f.carga_atual, e.url_imagem, f.tempo_descanso
-        FROM fichas_treino f 
-        JOIN exercicios_biblioteca e ON f.exercicio_id = e.id 
-        WHERE f.usuario_id = :u AND f.treino_nome = :t
-    """)
-    df_exercicios = pd.read_sql(query_exercicios, engine, params={"u": st.session_state.user_id, "t": treino_selecionado})
-    
-    if df_exercicios.empty:
-        st.info("Nenhum exercício cadastrado para este treino.")
-    else:
-        for _, row in df_exercicios.iterrows():
-            with st.container():
-                col_img, col_txt = st.columns([1, 2])
-                with col_img:
-                    img = row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/200?text=SGF+Treino"
+        for idx, row in df_ex.iterrows():
+            with st.container(border=True):
+                c1, c2 = st.columns([1, 2])
+                with c1:
+                    img = row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150"
                     st.image(img, use_container_width=True)
-                with col_txt:
+                with c2:
                     st.subheader(row['nome'])
-                    st.write(f"🔥 **{row['series']} séries x {row['repeticoes']} repetições**")
-                    st.write(f"⚖️ Carga Prescrita: **{row['carga_atual']} kg**")
+                    st.write(f"**{row['series']} séries x {row['repeticoes']} reps** | {row['carga_atual']}kg")
                     
-                    # CONTADOR REGRESSIVO (TIMER)
-                    tempo_descanso = row['tempo_descanso'] if row['tempo_descanso'] else 60
-                    if st.button(f"⏱️ Iniciar Descanso ({tempo_descanso}s)", key=f"timer_{row['id']}"):
-                        placeholder = st.empty()
-                        for t in range(tempo_descanso, -1, -1):
-                            placeholder.metric("⏰ Tempo de Descanso", f"{t}s")
-                            time.sleep(1)
-                        placeholder.success("👊 Próxima Série! Vamos!")
-                        st.balloons()
-            st.divider()
+                    # Se o treino estiver em andamento, mostra o botão de descanso
+                    if st.session_state.treino_em_andamento:
+                        if st.button(f"⏱️ Descanso ({row['tempo_descanso']}s)", key=f"t_{row['id']}"):
+                            placeholder = st.empty()
+                            for t in range(row['tempo_descanso'], -1, -1):
+                                placeholder.metric("Descansando...", f"{t}s")
+                                time.sleep(1)
+                            placeholder.success("Próxima série!")
+                            
+                            # Se for o último exercício da lista, avisa
+                            if idx == len(df_ex) - 1:
+                                st.balloons()
+                                st.info("🎉 Último exercício concluído! Não esqueça de encerrar o treino no botão acima.")
 
-# --- ÁREA ADMIN (Apenas para nível 'admin') ---
-if st.session_state.user_nivel == 'admin':
-    with st.sidebar.expander("🛠️ Painel Admin"):
-        # Aqui você pode adicionar links rápidos para as abas de Gestão/Biblioteca
-        st.write("Acesse as abas de gestão no menu principal se necessário.")
+        # DIÁLOGO DE ENCERRAMENTO (MODAL SIMULADO)
+        if 'treino_finalizado' in st.session_state and st.session_state.treino_finalizado:
+            st.markdown("---")
+            st.warning("### Deseja encerrar o treino agora?")
+            col_fim1, col_fim2 = st.columns(2)
+            if col_fim1.button("✅ Sim, Encerrar"):
+                # Aqui você pode salvar o tempo total no banco futuramente
+                st.session_state.treino_em_andamento = False
+                st.session_state.inicio_treino = None
+                st.session_state.treino_finalizado = False
+                st.success("Treino concluído com sucesso! Até a próxima.")
+                time.sleep(2)
+                st.rerun()
+            if col_fim2.button("❌ Não, Continuar"):
+                st.session_state.treino_finalizado = False
+                st.rerun()
