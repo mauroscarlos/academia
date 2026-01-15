@@ -53,39 +53,34 @@ if menu == "🏋️ Treinar Agora":
     else:
         t_sel = st.selectbox("Escolha o Treino:", df_t['treino_nome'].tolist())
 
-        # --- NOVO: BOTÃO DE EXPORTAR PARA O ALUNO ---
-        # Pegamos os dados atuais da tela para gerar o arquivo
-       df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
+        # --- EXPORTAÇÃO (Alinhado com o t_sel acima) ---
+        df_ex = pd.read_sql(text("SELECT f.*, e.nome, e.url_imagem FROM fichas_treino f JOIN exercicios_biblioteca e ON f.exercicio_id = e.id WHERE f.usuario_id = :u AND f.treino_nome = :t ORDER BY f.id ASC"), engine, params={"u": st.session_state.user_id, "t": t_sel})
         
         if not df_ex.empty:
             with st.expander("📥 ACESSAR FICHA OFFLINE / EXPORTAR"):
-                # Visual formatado para leitura rápida na tela
                 st.markdown(f"### 📋 Resumo do Treino: {t_sel}")
                 
-                # Criando uma tabela visual limpa para o aluno
                 tabela_html = "| Exercício | Séries x Reps | Descanso |\n| :--- | :--- | :--- |\n"
                 for _, r in df_ex.iterrows():
                     tabela_html += f"| **{r['nome']}** | {r['series']}x {r['repeticoes']} | {r['tempo_descanso']}s |\n"
                 
                 st.markdown(tabela_html)
-                
                 st.divider()
                 
-                # Preparando o CSV com correção de acentuação (UTF-8 com BOM)
-                # O 'utf-8-sig' resolve o problema dos acentos no Excel
                 csv_corrigido = df_ex[['nome', 'series', 'repeticoes', 'tempo_descanso', 'carga_atual']].to_csv(index=False, encoding='utf-8-sig', sep=';')
                 
                 st.download_button(
-                    label="📥 BAIXAR PLANILHA PARA EXCEL (Com Acentos)",
+                    label="📥 BAIXAR PLANILHA PARA EXCEL",
                     data=csv_corrigido,
                     file_name=f'Treino_{t_sel}.csv',
                     mime='text/csv',
                     use_container_width=True
                 )
-                st.caption("💡 Dica: O arquivo baixado já está configurado para abrir corretamente no Excel.")
-        # --- FIM DA EXPORTAÇÃO ---
 
-        if 'treino_andamento' not in st.session_state: st.session_state.treino_andamento = False
+        st.divider()
+
+        if 'treino_andamento' not in st.session_state: 
+            st.session_state.treino_andamento = False
         
         if st.session_state.treino_andamento:
             tempo = datetime.now() - st.session_state.inicio_t
@@ -94,22 +89,28 @@ if menu == "🏋️ Treinar Agora":
                 minutos = int(tempo.total_seconds() / 60)
                 with engine.begin() as conn:
                     conn.execute(text("INSERT INTO logs_treino (usuario_id, treino_nome, duracao_minutos) VALUES (:u, :t, :d)"), {"u": st.session_state.user_id, "t": t_sel, "d": minutos})
-                st.session_state.treino_andamento = False; st.rerun()
+                st.session_state.treino_andamento = False
+                st.rerun()
         else:
             if st.button("🚀 INICIAR TREINO", type="primary"):
-                st.session_state.treino_andamento = True; st.session_state.inicio_t = datetime.now(); st.rerun()
+                st.session_state.treino_andamento = True
+                st.session_state.inicio_t = datetime.now()
+                st.rerun()
 
-        # O restante do código de exibição continua igual
+        # Continuação do código de exibição dos exercícios...
         nomes_no_par = df_ex['exercicio_combinado_id'].dropna().unique().tolist()
 
         for _, row in df_ex.iterrows():
             with st.container(border=True):
                 c1, c2 = st.columns([1, 2])
-                with c1: st.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150", use_container_width=True)
+                with c1: 
+                    st.image(row['url_imagem'] if row['url_imagem'] else "https://via.placeholder.com/150", use_container_width=True)
                 with c2:
                     st.subheader(row['nome'])
-                    if row['exercicio_combinado_id']: st.caption(f"🔗 BI-SET COM: {row['exercicio_combinado_id']}")
+                    if row['exercicio_combinado_id']: 
+                        st.caption(f"🔗 BI-SET COM: {row['exercicio_combinado_id']}")
                     st.write(f"🎯 {row['series']}x {row['repeticoes']} | ⚖️ {row['carga_atual']}kg")
+                    
                     if st.session_state.treino_andamento:
                         if row['nome'] in nomes_no_par:
                             st.error("🚫 SEM DESCANSO! Vá para o próximo exercício.")
@@ -117,7 +118,8 @@ if menu == "🏋️ Treinar Agora":
                             if st.button(f"⏱️ Descanso {row['tempo_descanso']}s", key=f"d_{row['id']}"):
                                 p = st.empty()
                                 for t_cnt in range(int(row['tempo_descanso']), -1, -1):
-                                    p.metric("Descanso", f"{t_cnt}s"); time.sleep(1)
+                                    p.metric("Descanso", f"{t_cnt}s")
+                                    time.sleep(1)
                                 p.success("VAI!")
 
 # --- 3. MONTAR TREINO (COM GRUPOS MUSCULARES) ---
