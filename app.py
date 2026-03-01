@@ -301,55 +301,58 @@ with tab_ficha:
 
                 itens_dest = db.listar_itens(treino_sel_id)
 
-                with st.form("form_item_novo", clear_on_submit=True):
-                    fi1, fi2 = st.columns([3, 1])
-                    with fi1:
-                        ex_sel = st.selectbox("Exercício", options=list(ex_map.keys()),
-                                               format_func=lambda x: ex_map[x], key="ex_novo")
-                    with fi2:
-                        tipo_s = st.selectbox("Tipo", options=["linear","piramide"],
-                                               format_func=lambda x: "Linear" if x == "linear" else "Pirâmide",
-                                               key="tipo_novo")
+                fi1, fi2 = st.columns([3, 1])
+                with fi1:
+                    ex_sel = st.selectbox("Exercício", options=list(ex_map.keys()),
+                                           format_func=lambda x: ex_map[x], key="ex_novo")
+                with fi2:
+                    tipo_s = st.selectbox("Tipo", options=["linear","piramide"],
+                                           format_func=lambda x: "Linear" if x == "linear" else "Pirâmide",
+                                           key="tipo_novo")
 
-                    fi3, fi4 = st.columns([1, 2])
-                    with fi3:
-                        descanso = st.number_input("Descanso (s)", min_value=10, max_value=300,
-                                                    value=60, step=5, key="desc_novo")
-                    with fi4:
-                        comb_opts = {"": "— Nenhum —"}
-                        if not itens_dest.empty:
-                            comb_opts.update({str(int(r["id"])): r["exercicio_nome"]
-                                               for _, r in itens_dest.iterrows()})
-                        comb_sel = st.selectbox("Combinado com", options=list(comb_opts.keys()),
-                                                 format_func=lambda x: comb_opts[x], key="comb_novo")
+                fi3, fi4 = st.columns([1, 2])
+                with fi3:
+                    descanso = st.number_input("Descanso (s)", min_value=10, max_value=300,
+                                                value=60, step=5, key="desc_novo")
+                with fi4:
+                    comb_opts = {"": "— Nenhum —"}
+                    if not itens_dest.empty:
+                        comb_opts.update({str(int(r["id"])): r["exercicio_nome"]
+                                           for _, r in itens_dest.iterrows()})
+                    comb_sel = st.selectbox("Combinado com", options=list(comb_opts.keys()),
+                                             format_func=lambda x: comb_opts[x], key="comb_novo")
 
-                    obs_item = st.text_input("Observação", key="obs_novo")
+                obs_item = st.text_input("Observação", key="obs_novo")
 
-                    n_series = st.number_input("Nº de séries", min_value=1, max_value=8, value=3, key="ns_novo")
+                n_series = st.number_input("Nº de séries", min_value=1, max_value=8, value=3,
+                                            step=1, key="ns_novo")
 
-                    series_cols = st.columns(int(n_series))
-                    series_vals = []
-                    for i in range(int(n_series)):
-                        with series_cols[i]:
-                            st.markdown(f"**{i+1}ª**")
-                            reps = st.number_input("Reps", min_value=1, max_value=100,
-                                                    value=12, key=f"reps_novo_{i}")
-                            carga = st.number_input("kg", min_value=0.0, step=0.5,
-                                                     value=0.0, key=f"carga_novo_{i}")
-                            series_vals.append((reps, carga))
+                st.markdown('<div style="font-size:12px;color:#7a7f96;margin:8px 0 4px">Séries</div>', unsafe_allow_html=True)
+                series_cols = st.columns(int(n_series))
+                series_keys = list(range(int(n_series)))
+                for i in series_keys:
+                    with series_cols[i]:
+                        st.markdown(f"**{i+1}ª**")
+                        st.number_input("Reps", min_value=1, max_value=100,
+                                         value=12, key=f"reps_novo_{i}")
+                        st.number_input("kg", min_value=0.0, step=0.5,
+                                         value=0.0, key=f"carga_novo_{i}")
 
-                    if st.form_submit_button("✓ Adicionar exercício", type="primary", use_container_width=True):
-                        comb_id = int(comb_sel) if comb_sel else None
-                        item = db.salvar_item(
-                            treino_id=treino_sel_id, exercicio_id=ex_sel,
-                            ordem=len(itens_dest), tipo_serie=tipo_s,
-                            descanso_seg=descanso, combinado_com=comb_id, observacao=obs_item
-                        )
-                        item_id = item["id"]
-                        for i, (reps, carga) in enumerate(series_vals):
-                            db.salvar_serie(item_id, i+1, reps, carga if carga > 0 else None)
-                        st.success("✓ Exercício adicionado!")
-                        st.rerun()
+                if st.button("✓ Adicionar exercício", type="primary",
+                              use_container_width=True, key="btn_add_ex"):
+                    comb_id = int(comb_sel) if comb_sel else None
+                    series_vals = [(st.session_state[f"reps_novo_{i}"],
+                                    st.session_state[f"carga_novo_{i}"]) for i in series_keys]
+                    item = db.salvar_item(
+                        treino_id=treino_sel_id, exercicio_id=ex_sel,
+                        ordem=len(itens_dest), tipo_serie=tipo_s,
+                        descanso_seg=descanso, combinado_com=comb_id, observacao=obs_item
+                    )
+                    item_id = item["id"]
+                    for i, (reps, carga) in enumerate(series_vals):
+                        db.salvar_serie(item_id, i+1, reps, carga if carga > 0 else None)
+                    st.success("✓ Exercício adicionado!")
+                    st.rerun()
 
         # ── COLUNA DIREITA — Treinos criados ─────────────────────────────
         with col_dir:
