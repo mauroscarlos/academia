@@ -139,7 +139,7 @@ with tab_exercicios:
                 e_nome = st.text_input("Nome *", value=ex_edit["nome"] if ex_edit is not None else "")
             with fe2:
                 grupo_idx = GRUPOS.index(ex_edit["grupo"]) if ex_edit is not None and ex_edit["grupo"] in GRUPOS else 0
-                e_grupo = st.selectbox("G. muscular", GRUPOS, index=grupo_idx)
+                e_grupo = st.selectbox("Grupo", GRUPOS, index=grupo_idx)
             e_desc = st.text_input("Descrição (opcional)",
                                     value=ex_edit["descricao"] if ex_edit is not None and ex_edit["descricao"] else "")
 
