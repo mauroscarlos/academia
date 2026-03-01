@@ -217,113 +217,141 @@ with tab_ficha:
 
         treinos_df = db.listar_treinos(sel_plano)
 
-        # Adicionar treino
-        with st.form("form_treino", clear_on_submit=True):
-            ft1, ft2 = st.columns([1, 3])
-            with ft1:
-                t_nome = st.text_input("Treino", placeholder="A, B, C...")
-            with ft2:
-                t_desc = st.text_input("Descrição", placeholder="Ex: Peito e Tríceps")
-            if st.form_submit_button("+ Adicionar treino", use_container_width=True):
-                if t_nome.strip():
-                    ordem = len(treinos_df)
-                    db.salvar_treino(sel_plano, t_nome.upper(), t_desc, ordem)
-                    st.rerun()
+        # ── Layout duas colunas ──────────────────────────────────────────
+        col_esq, col_dir = st.columns([1, 1], gap="large")
 
-        st.divider()
+        # ── COLUNA ESQUERDA — Formulários ────────────────────────────────
+        with col_esq:
+            st.markdown('<div style="font-size:13px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Adicionar Treino</div>', unsafe_allow_html=True)
 
-        if treinos_df.empty:
-            st.info("Nenhum treino criado neste plano ainda.")
-        else:
-            ex_map = {int(r["id"]): r["nome"] for _, r in exercicios_df.iterrows()}
+            with st.form("form_treino", clear_on_submit=True):
+                ft1, ft2 = st.columns([1, 2])
+                with ft1:
+                    t_nome = st.text_input("Treino", placeholder="A, B, C...")
+                with ft2:
+                    t_desc = st.text_input("Descrição", placeholder="Ex: Peito e Tríceps")
+                if st.form_submit_button("+ Adicionar treino", use_container_width=True):
+                    if t_nome.strip():
+                        ordem = len(treinos_df)
+                        db.salvar_treino(sel_plano, t_nome.upper(), t_desc, ordem)
+                        st.rerun()
 
-            for _, treino in treinos_df.iterrows():
-                treino_id = int(treino["id"])
-                with st.expander(f"🏋️ Treino {treino['nome']} — {treino['descricao'] or ''}", expanded=True):
+            if not treinos_df.empty:
+                ex_map = {int(r["id"]): r["nome"] for _, r in exercicios_df.iterrows()}
 
+                # Selectbox para escolher em qual treino adicionar exercício
+                st.markdown('<div style="font-size:13px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:1.5px;margin:20px 0 12px">Adicionar Exercício</div>', unsafe_allow_html=True)
+
+                treino_sel_map = {int(r["id"]): f"Treino {r['nome']} — {r['descricao'] or ''}" for _, r in treinos_df.iterrows()}
+                treino_sel_id = st.selectbox("Treino de destino", options=list(treino_sel_map.keys()),
+                                              format_func=lambda x: treino_sel_map[x], key="treino_dest")
+
+                itens_dest = db.listar_itens(treino_sel_id)
+
+                with st.form("form_item_novo", clear_on_submit=True):
+                    fi1, fi2 = st.columns([3, 1])
+                    with fi1:
+                        ex_sel = st.selectbox("Exercício", options=list(ex_map.keys()),
+                                               format_func=lambda x: ex_map[x], key="ex_novo")
+                    with fi2:
+                        tipo_s = st.selectbox("Tipo", options=["linear","piramide"],
+                                               format_func=lambda x: "Linear" if x == "linear" else "Pirâmide",
+                                               key="tipo_novo")
+
+                    fi3, fi4 = st.columns([1, 2])
+                    with fi3:
+                        descanso = st.number_input("Descanso (s)", min_value=10, max_value=300,
+                                                    value=60, step=5, key="desc_novo")
+                    with fi4:
+                        comb_opts = {"": "— Nenhum —"}
+                        if not itens_dest.empty:
+                            comb_opts.update({str(int(r["id"])): r["exercicio_nome"]
+                                               for _, r in itens_dest.iterrows()})
+                        comb_sel = st.selectbox("Combinado com", options=list(comb_opts.keys()),
+                                                 format_func=lambda x: comb_opts[x], key="comb_novo")
+
+                    obs_item = st.text_input("Observação", key="obs_novo")
+
+                    n_series = st.number_input("Nº de séries", min_value=1, max_value=8, value=3, key="ns_novo")
+
+                    series_cols = st.columns(int(n_series))
+                    series_vals = []
+                    for i in range(int(n_series)):
+                        with series_cols[i]:
+                            st.markdown(f"**{i+1}ª**")
+                            reps = st.number_input("Reps", min_value=1, max_value=100,
+                                                    value=12, key=f"reps_novo_{i}")
+                            carga = st.number_input("kg", min_value=0.0, step=0.5,
+                                                     value=0.0, key=f"carga_novo_{i}")
+                            series_vals.append((reps, carga))
+
+                    if st.form_submit_button("✓ Adicionar exercício", type="primary", use_container_width=True):
+                        comb_id = int(comb_sel) if comb_sel else None
+                        item = db.salvar_item(
+                            treino_id=treino_sel_id, exercicio_id=ex_sel,
+                            ordem=len(itens_dest), tipo_serie=tipo_s,
+                            descanso_seg=descanso, combinado_com=comb_id, observacao=obs_item
+                        )
+                        item_id = item["id"]
+                        for i, (reps, carga) in enumerate(series_vals):
+                            db.salvar_serie(item_id, i+1, reps, carga if carga > 0 else None)
+                        st.success("✓ Exercício adicionado!")
+                        st.rerun()
+
+        # ── COLUNA DIREITA — Treinos criados ─────────────────────────────
+        with col_dir:
+            st.markdown('<div style="font-size:13px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Treinos do Plano</div>', unsafe_allow_html=True)
+
+            if treinos_df.empty:
+                st.markdown("""
+                <div style="background:#16181f;border:1px dashed #2a2d3a;border-radius:14px;padding:32px;text-align:center;color:#7a7f96">
+                    Nenhum treino criado ainda.<br>Adicione um treino ao lado.
+                </div>""", unsafe_allow_html=True)
+            else:
+                for _, treino in treinos_df.iterrows():
+                    treino_id = int(treino["id"])
                     itens_df = db.listar_itens(treino_id)
 
-                    # Formulário para adicionar exercício
-                    with st.form(f"form_item_{treino_id}", clear_on_submit=True):
-                        st.markdown("**Adicionar exercício**")
-                        fi1, fi2, fi3, fi4 = st.columns([3, 1, 1, 1])
-                        with fi1:
-                            ex_sel = st.selectbox("Exercício", options=list(ex_map.keys()),
-                                                   format_func=lambda x: ex_map[x],
-                                                   key=f"ex_{treino_id}")
-                        with fi2:
-                            tipo_s = st.selectbox("Tipo", options=["linear","piramide"],
-                                                   format_func=lambda x: "Linear" if x == "linear" else "Pirâmide",
-                                                   key=f"tipo_{treino_id}")
-                        with fi3:
-                            descanso = st.number_input("Descanso (s)", min_value=10, max_value=300,
-                                                        value=60, step=5, key=f"desc_{treino_id}")
-                        with fi4:
-                            comb_opts = {"": "— Nenhum —"}
-                            if not itens_df.empty:
-                                comb_opts.update({str(int(r["id"])): f"{r['exercicio_nome']}" 
-                                                   for _, r in itens_df.iterrows()})
-                            comb_sel = st.selectbox("Combinado com", options=list(comb_opts.keys()),
-                                                     format_func=lambda x: comb_opts[x],
-                                                     key=f"comb_{treino_id}")
+                    # Cabeçalho do treino
+                    st.markdown(f"""
+                    <div style="background:#16181f;border:1px solid #2a2d3a;border-top:3px solid #c8f564;border-radius:14px;padding:16px 20px;margin-bottom:4px">
+                        <div style="display:flex;justify-content:space-between;align-items:center">
+                            <div>
+                                <span style="font-family:'DM Serif Display',serif;font-size:20px;color:#c8f564">Treino {treino['nome']}</span>
+                                <span style="font-size:13px;color:#7a7f96;margin-left:10px">{treino['descricao'] or ''}</span>
+                            </div>
+                            <span style="font-size:12px;color:#7a7f96">{len(itens_df)} exercício(s)</span>
+                        </div>
+                    </div>""", unsafe_allow_html=True)
 
-                        obs_item = st.text_input("Observação", key=f"obs_{treino_id}")
-
-                        n_series = st.number_input("Nº de séries", min_value=1, max_value=10,
-                                                    value=3, key=f"ns_{treino_id}")
-
-                        series_cols = st.columns(int(n_series))
-                        series_vals = []
-                        for i in range(int(n_series)):
-                            with series_cols[i]:
-                                st.markdown(f"**Série {i+1}**")
-                                reps = st.number_input("Reps", min_value=1, max_value=100,
-                                                        value=12, key=f"reps_{treino_id}_{i}")
-                                carga = st.number_input("Carga(kg)", min_value=0.0, step=0.5,
-                                                         value=0.0, key=f"carga_{treino_id}_{i}")
-                                series_vals.append((reps, carga))
-
-                        if st.form_submit_button("✓ Adicionar exercício", type="primary", use_container_width=True):
-                            comb_id = int(comb_sel) if comb_sel else None
-                            item = db.salvar_item(
-                                treino_id=treino_id, exercicio_id=ex_sel,
-                                ordem=len(itens_df), tipo_serie=tipo_s,
-                                descanso_seg=descanso, combinado_com=comb_id, observacao=obs_item
-                            )
-                            item_id = item["id"]
-                            for i, (reps, carga) in enumerate(series_vals):
-                                db.salvar_serie(item_id, i+1, reps, carga if carga > 0 else None)
-                            st.success("✓ Exercício adicionado!")
-                            st.rerun()
-
-                    # Lista de exercícios do treino
-                    if not itens_df.empty:
-                        st.markdown("---")
-                        for _, item in itens_df.iterrows():
+                    if itens_df.empty:
+                        st.markdown('<div style="color:#7a7f96;font-size:13px;padding:8px 20px;margin-bottom:12px">Nenhum exercício ainda.</div>', unsafe_allow_html=True)
+                    else:
+                        for idx, item in itens_df.iterrows():
                             item_id = int(item["id"])
                             series_df = db.listar_series(item_id)
-                            tipo_badge = "🔺 Pirâmide" if item["tipo_serie"] == "piramide" else "➡️ Linear"
+                            tipo_badge = "🔺" if item["tipo_serie"] == "piramide" else "➡️"
                             comb_txt = ""
                             if item.get("combinado_com"):
                                 item_comb = itens_df[itens_df["id"] == item["combinado_com"]]
                                 if not item_comb.empty:
-                                    comb_txt = f" | 🔗 combinado com {item_comb.iloc[0]['exercicio_nome']}"
+                                    comb_txt = f"🔗 {item_comb.iloc[0]['exercicio_nome']}"
 
                             series_html = ""
                             for _, s in series_df.iterrows():
-                                carga_txt = f" / {s['carga']}kg" if s['carga'] else ""
-                                series_html += f'<span style="background:#1e2029;border:1px solid #2a2d3a;border-radius:6px;padding:4px 10px;margin-right:6px;font-family:DM Mono,monospace;font-size:12px;color:#c8f564">{int(s["numero"])}ª {int(s["repeticoes"])} reps{carga_txt}</span>'
+                                carga_txt = f"/{s['carga']}kg" if s['carga'] else ""
+                                series_html += f'<span style="background:#1e2029;border:1px solid #2a2d3a;border-radius:6px;padding:3px 8px;margin-right:4px;font-family:DM Mono,monospace;font-size:11px;color:#c8f564">{int(s["numero"])}ª {int(s["repeticoes"])}x{carga_txt}</span>'
 
-                            col_ex, col_del = st.columns([9, 1])
-                            with col_ex:
+                            col_info, col_del = st.columns([9, 1])
+                            with col_info:
                                 st.markdown(f"""
-                                <div style="background:#16181f;border:1px solid #2a2d3a;border-radius:12px;padding:14px 18px;margin-bottom:8px">
-                                    <div style="font-weight:600;color:#e8eaf0;margin-bottom:6px">
-                                        {item['exercicio_nome']}
-                                        <span style="font-size:11px;color:#7a7f96;margin-left:10px">{tipo_badge} | ⏱ {item['descanso_seg']}s{comb_txt}</span>
+                                <div style="background:#1e2029;border-left:3px solid #2a2d3a;border-radius:0 10px 10px 0;padding:12px 16px;margin-bottom:6px">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                                        <span style="font-weight:600;color:#e8eaf0;font-size:14px">{tipo_badge} {item['exercicio_nome']}</span>
+                                        <span style="font-size:11px;color:#7a7f96">⏱ {item['descanso_seg']}s {'· ' + comb_txt if comb_txt else ''}</span>
                                     </div>
-                                    <div>{series_html}</div>
-                                    {f'<div style="font-size:12px;color:#7a7f96;margin-top:8px">📝 {item["observacao"]}</div>' if item.get("observacao") else ''}
+                                    <div style="flex-wrap:wrap">{series_html}</div>
+                                    {f'<div style="font-size:11px;color:#6af0c8;margin-top:6px">📝 {item["observacao"]}</div>' if item.get("observacao") else ''}
                                 </div>""", unsafe_allow_html=True)
                             with col_del:
                                 if st.button("🗑", key=f"del_item_{item_id}"):
@@ -331,7 +359,8 @@ with tab_ficha:
                                     db.excluir_item(item_id)
                                     st.rerun()
 
-                    # Excluir treino
                     if st.button(f"🗑 Excluir treino {treino['nome']}", key=f"del_treino_{treino_id}"):
                         db.excluir_treino(treino_id)
                         st.rerun()
+
+                    st.markdown("<div style='margin-bottom:12px'></div>", unsafe_allow_html=True)
