@@ -120,32 +120,88 @@ with tab_exercicios:
 
     GRUPOS = ["Peito","Costas","Pernas","Ombro","Bíceps","Tríceps","Abdômen","Cardio","Outro"]
 
-    with st.form("form_exercicio", clear_on_submit=True):
-        st.markdown("**Novo exercício**")
-        fe1, fe2, fe3 = st.columns([2, 1, 2])
-        with fe1: e_nome = st.text_input("Nome *")
-        with fe2: e_grupo = st.selectbox("Grupo muscular", GRUPOS)
-        with fe3: e_desc = st.text_input("Descrição (opcional)")
-        if st.form_submit_button("✓ Cadastrar exercício", type="primary", use_container_width=True):
-            if not e_nome.strip():
-                st.error("Informe o nome do exercício.")
+    col_form_ex, col_list_ex = st.columns([1, 1], gap="large")
+
+    with col_form_ex:
+        # Detecta se está em modo edição
+        editando_ex = st.session_state.get("editando_ex_id")
+        ex_edit = None
+        if editando_ex:
+            ex_edit = exercicios_df[exercicios_df["id"] == editando_ex]
+            ex_edit = ex_edit.iloc[0] if not ex_edit.empty else None
+
+        titulo_form = "✏️ Editar exercício" if ex_edit is not None else "Novo exercício"
+        st.markdown(f'<div style="font-size:13px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">{titulo_form}</div>', unsafe_allow_html=True)
+
+        with st.form("form_exercicio", clear_on_submit=True):
+            fe1, fe2 = st.columns([2, 1])
+            with fe1:
+                e_nome = st.text_input("Nome *", value=ex_edit["nome"] if ex_edit is not None else "")
+            with fe2:
+                grupo_idx = GRUPOS.index(ex_edit["grupo"]) if ex_edit is not None and ex_edit["grupo"] in GRUPOS else 0
+                e_grupo = st.selectbox("Grupo muscular", GRUPOS, index=grupo_idx)
+            e_desc = st.text_input("Descrição (opcional)",
+                                    value=ex_edit["descricao"] if ex_edit is not None and ex_edit["descricao"] else "")
+
+            btn_label = "💾 Salvar alterações" if ex_edit is not None else "✓ Cadastrar exercício"
+            salvar_ex = st.form_submit_button(btn_label, type="primary", use_container_width=True)
+            if ex_edit is not None:
+                cancelar_ex = st.form_submit_button("✕ Cancelar edição", use_container_width=True)
             else:
-                db.salvar_exercicio(e_nome, e_grupo, e_desc)
-                st.success(f"✓ Exercício '{e_nome}' cadastrado!")
+                cancelar_ex = False
+
+            if salvar_ex:
+                if not e_nome.strip():
+                    st.error("Informe o nome do exercício.")
+                else:
+                    if ex_edit is not None:
+                        # Atualiza direto no Supabase
+                        client = db.get_client()
+                        db._retry(lambda: client.table("exercicios")
+                                  .update({"nome": e_nome.strip(), "grupo": e_grupo,
+                                           "descricao": e_desc or None})
+                                  .eq("id", int(editando_ex)).execute())
+                        st.session_state.pop("editando_ex_id", None)
+                        st.success(f"✓ Exercício '{e_nome}' atualizado!")
+                    else:
+                        db.salvar_exercicio(e_nome, e_grupo, e_desc)
+                        st.success(f"✓ Exercício '{e_nome}' cadastrado!")
+                    st.rerun()
+
+            if cancelar_ex:
+                st.session_state.pop("editando_ex_id", None)
                 st.rerun()
 
-    st.divider()
-    if not exercicios_df.empty:
-        for grupo in exercicios_df["grupo"].unique():
-            st.markdown(f"**{grupo}**")
-            df_g = exercicios_df[exercicios_df["grupo"] == grupo]
-            cols = st.columns(4)
-            for i, (_, row) in enumerate(df_g.iterrows()):
-                with cols[i % 4]:
-                    st.markdown(f"""
-                    <div style="background:#16181f;border:1px solid #2a2d3a;border-radius:10px;padding:10px 14px;margin-bottom:8px;font-size:13px">
-                        {row['nome']}
-                    </div>""", unsafe_allow_html=True)
+    with col_list_ex:
+        st.markdown('<div style="font-size:13px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">Exercícios Cadastrados</div>', unsafe_allow_html=True)
+
+        if exercicios_df.empty:
+            st.info("Nenhum exercício cadastrado.")
+        else:
+            for grupo in sorted(exercicios_df["grupo"].dropna().unique().tolist()):
+                st.markdown(f'<div style="font-size:12px;font-weight:700;color:#c8f564;text-transform:uppercase;letter-spacing:1.5px;margin:14px 0 6px">{grupo}</div>', unsafe_allow_html=True)
+                df_g = exercicios_df[exercicios_df["grupo"] == grupo]
+                for _, row in df_g.iterrows():
+                    ex_id = int(row["id"])
+                    c_nome, c_edit, c_del = st.columns([6, 1, 1])
+                    with c_nome:
+                        st.markdown(f"""
+                        <div style="background:#16181f;border:1px solid #2a2d3a;border-radius:10px;padding:10px 14px;font-size:13px;color:#e8eaf0">
+                            {row['nome']}
+                            {f'<span style="font-size:11px;color:#7a7f96;margin-left:8px">— {row["descricao"]}</span>' if row.get("descricao") else ''}
+                        </div>""", unsafe_allow_html=True)
+                    with c_edit:
+                        if st.button("✏️", key=f"edit_ex_{ex_id}", help="Editar"):
+                            st.session_state["editando_ex_id"] = ex_id
+                            st.rerun()
+                    with c_del:
+                        if st.button("🗑", key=f"del_ex_{ex_id}", help="Excluir"):
+                            try:
+                                db.excluir_exercicio(ex_id)
+                                st.success(f"Exercício removido.")
+                                st.rerun()
+                            except Exception:
+                                st.error("Não é possível excluir: exercício está em uso em algum treino.")
 
 # ══════════════════════════════════════════════════════════════════════════
 # TAB 3 — PLANOS
