@@ -134,12 +134,9 @@ with tab_exercicios:
         st.markdown(f'<div style="font-size:13px;font-weight:600;color:#7a7f96;text-transform:uppercase;letter-spacing:1.5px;margin-bottom:12px">{titulo_form}</div>', unsafe_allow_html=True)
 
         with st.form("form_exercicio", clear_on_submit=True):
-            fe1, fe2 = st.columns([2, 1])
-            with fe1:
-                e_nome = st.text_input("Nome *", value=ex_edit["nome"] if ex_edit is not None else "")
-            with fe2:
-                grupo_idx = GRUPOS.index(ex_edit["grupo"]) if ex_edit is not None and ex_edit["grupo"] in GRUPOS else 0
-                e_grupo = st.selectbox("Grupo", GRUPOS, index=grupo_idx)
+            grupo_idx = GRUPOS.index(ex_edit["grupo"]) if ex_edit is not None and ex_edit["grupo"] in GRUPOS else 0
+            e_grupo = st.selectbox("Grupo muscular", GRUPOS, index=grupo_idx)
+            e_nome = st.text_input("Nome *", value=ex_edit["nome"] if ex_edit is not None else "")
             e_desc = st.text_input("Descrição (opcional)",
                                     value=ex_edit["descricao"] if ex_edit is not None and ex_edit["descricao"] else "")
 
